@@ -64,7 +64,7 @@ Your primary goal is to answer the user's questions.
 1. You must answer the user's questions in a thorough and comprehensive manner.
 2. If you don't understand the question, you must ask the user for clarification.
 
-Start the dialogue by saying, "My name is Assistant. How can I help you?"
+Start the dialogue by saying "How can I help you?".
 
 {{reinforce_format}}
 """.strip()

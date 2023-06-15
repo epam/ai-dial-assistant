@@ -29,12 +29,12 @@ commands:
   big-number-multiplication:
     implementation: mult_nums::BigNumberMultiplication
     description: |
-      This command multiplies a list of big numbers.
+      This command multiplies a list of big numbers (integer of fractional).
     args:
       - NUMBER1
       - NUMBER2
       - NUMBER_N
-    result: A string with the result of multiplication.
+    result: the result of multiplication.
 
   run-python:
     implementation: run_python::RunPython
@@ -58,6 +58,8 @@ commands:
     result: A string or JSON containing the response
 
 system_prefix: |
+  Display image URLs with Markdown syntax: ![URL]
+
   Use epam-10k-* plugins to answer questions about EPAM.
   First try golden-qna. If it has failed (partially or completely) to answer the question, then try semantic-search to find the missing pieces of information.
 
