@@ -42,17 +42,18 @@ def collect_plugin(
     elif isinstance(plugin, PluginTool):
         tools[name] = plugin
     elif isinstance(plugin, PluginOpenAI):
+        # Displaying OpenAI plugin as a regular tool in the main session
         info = get_open_ai_plugin_info(plugin.url)
         tools[name] = PluginTool(
             type="tool",
             system_prefix=plugin.system_prefix,
             description=info.ai_plugin.description_for_human,
-            commands=["http-request"],
+            commands=[],
         )
 
 
 def main_args() -> None:
-    # Need to add this so that plugin modules residing at "plugins" folder could be references in index.yaml using relative module paths. Otherwise, we need to prefix all module paths with "plugins.".
+    # Need to add this so that plugin modules residing at "plugins" folder could be references in index.yaml using relative module paths. Otherwise, we need to prefix all module paths with "plugins."
     sys.path.append(os.path.abspath("plugins"))
 
     args = parse_args()

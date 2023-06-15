@@ -1,10 +1,9 @@
 from typing import Dict, List, NamedTuple, Optional
 
-from pydantic import Field
-from requests import Response
-
 from langchain.requests import Requests
 from langchain.tools.openapi.utils.api_models import APIOperation
+from pydantic import Field
+from requests import Response
 
 
 class _ParamMapping(NamedTuple):
@@ -81,7 +80,8 @@ class OpenAPIEndpointRequester:
         if api_response.status_code != 200:
             method_str = str(self.operation.method.value)
             return {
-                "status_code": api_response.reason,
+                "reason": api_response.reason,
+                "status_code": api_response.status_code,
                 "method:": method_str.upper(),
                 "url": request_args["url"],
                 "params": request_args["params"],

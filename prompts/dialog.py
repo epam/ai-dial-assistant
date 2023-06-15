@@ -43,8 +43,10 @@ NAME must be one of the following plugins:
 {%- endfor %}
 {%- for name, command in commands.items() %}
 * {"command": "{{name}}", "args": [{{ command.args | join(", ") }}]}
-{% if command.description %}{{command.description}}{% endif -%}
-{% if command.result %}The command returns {{command.result}}{% endif -%}
+{%- if command.description %}
+{{command.description}}{% endif %}
+{%- if command.result %}
+The command returns {{command.result}}{% endif %}
 {%- endfor %}
 * {"command": "say-or-ask", "args": [MESSAGE_OR_QUESTION]}
 The command sends a message to the user, e.g., to ask a question or a clarification or to provide a result.
@@ -68,16 +70,17 @@ Act as a helpful assistant. Your training data goes up until September 2021.
 Today is {{today_date}}.
 
 {%- if system_prefix %}
-{{system_prefix}}
-{% endif -%}
+{{system_prefix}}{% endif %}
 
 The following list of commands is available to you to answer the user's questions:
 * {"command": "end-dialog", "args": [STRING_RESULT_OR_EXPLANATION]}
 The command stops the dialogue when the result is ready, or explains why the user's request cannot be processed.
 {%- for name, command in commands.items() %}
 * {"command": "{{name}}", "args": [{{ command.args | join(", ") }}]}
-{%- if command.description %}{{command.description}}{% endif %}
-{%- if command.result %}The command returns {{command.result}}{% endif %}
+{%- if command.description %}
+{{command.description}}{% endif %}
+{%- if command.result %}
+The command returns {{command.result}}{% endif %}
 {%- endfor %}
 
 {{request_response}}

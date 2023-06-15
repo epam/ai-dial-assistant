@@ -1,3 +1,4 @@
+import json
 from typing import Dict, List
 
 from pydantic import BaseModel
@@ -34,5 +35,9 @@ class ExecutionContext:
         return self.command_dict[name](cmd.dict())
 
     def parse_commands(self, command_str: str) -> List[Command]:
-        commands = CommandList.parse_raw(command_str).commands
+        try:
+            obj = json.loads(command_str)
+            commands = CommandList.parse_obj(obj).commands
+        except Exception as e:
+            raise Exception(f"Can't parse commands: {str(e)}")
         return list(map(lambda d: self._create_command(d), commands))

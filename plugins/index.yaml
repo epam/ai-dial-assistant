@@ -17,7 +17,7 @@ commands:
       The command sends a request to Wolfram Alpha and returns the response.
     args:
       - REQUEST
-    result: A string containing response URL
+    result: A string containing the response
 
   big-number-multiplication:
     implementation: mult_nums::BigNumberMultiplication
@@ -65,6 +65,10 @@ plugins:
     description: Useful for fetching weather forecast for a particular location and date.
     commands:
       - weather-forecast
+
+  # wolfram-alpha:
+  #   type: open-ai-plugin
+  #   url: https://www.wolframalpha.com/.well-known/ai-plugin.json
 
   epam-10k-golden-qna:
     type: open-ai-plugin
