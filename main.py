@@ -72,7 +72,11 @@ def main_args() -> None:
     for name, plugin in conf.plugins.items():
         collect_plugin(conf.commands, name, plugin, commands, tools, command_dict)
 
-    init_messages = [SYSTEM_DIALOG_MESSAGE.format(commands=commands, tools=tools)]
+    init_messages = [
+        SYSTEM_DIALOG_MESSAGE.format(
+            system_prefix=conf.system_prefix, commands=commands, tools=tools
+        )
+    ]
 
     chain = CommandChain(
         model=model,

@@ -148,7 +148,7 @@ class RunPlugin(Command):
         description_for_model = info.ai_plugin.description_for_model
         url = get_base_url(info.ai_plugin.api.url)
 
-        system_prefix = Template(open_ai_plugin_template).render(
+        system_prefix = plugin.system_prefix + Template(open_ai_plugin_template).render(
             description_for_model=description_for_model,
             url=url,
             open_api=open_api,

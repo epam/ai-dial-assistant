@@ -31,6 +31,10 @@ system_template = """
 Act as a helpful assistant. Your training data goes up until September 2021.
 Today is {{today_date}}.
 
+{%- if system_prefix %}
+
+{{system_prefix}}{% endif %}
+
 The following list of commands is available to you to answer the user's questions:
 * {"command": "run-plugin", "args": [NAME, QUERY]}
 The command runs a specified plugin to solve a one-shot task written in natural language.
@@ -134,7 +138,7 @@ SYSTEM_DIALOG_MESSAGE = SystemMessagePromptTemplate(
     prompt=PromptTemplate(
         template=system_template,
         template_format="jinja2",
-        input_variables=["tools", "commands"],
+        input_variables=["system_prefix", "tools", "commands"],
         partial_variables={
             "today_date": get_today_date(),
             "request_response": request_response,
@@ -147,7 +151,7 @@ PLUGIN_SYSTEM_DIALOG_MESSAGE = SystemMessagePromptTemplate(
     prompt=PromptTemplate(
         template=plugin_system_template,
         template_format="jinja2",
-        input_variables=["commands", "system_prefix", "query"],
+        input_variables=["system_prefix", "commands", "query"],
         partial_variables={
             "today_date": get_today_date(),
             "request_response": request_response,

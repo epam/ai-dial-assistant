@@ -15,6 +15,13 @@ commands:
     implementation: wolfram_alpha::WolframAlpha
     description: |
       The command sends a request to Wolfram Alpha and returns the response.
+      Formulate the query as a Wolfram Language code.
+      In ALL responses that involve code, write ALL code in Wolfram Language.
+      Create Wolfram Language functions even if an implementation is already well known in another language.
+      Avoid adding additional parameter when plotting. Only specify the bare minimum:
+        - Plot[x^2, {x, 0, 10}]
+        - ListPlot[{{2019,2393530},{2020,2659478},{2021,3758144},{2022,4824698},{2023,5307168}}]
+
     args:
       - REQUEST
     result: A string containing the response
@@ -49,6 +56,10 @@ commands:
       - URL
       - JSON_DATA
     result: A string or JSON containing the response
+
+system_prefix: |
+  Use epam-10k-* plugins to answer questions about EPAM.
+  First try golden-qna. If it has failed (partially or completely) to answer the question, then try semantic-search to find the missing pieces of information.
 
 plugins:
   big-number-multiplication:

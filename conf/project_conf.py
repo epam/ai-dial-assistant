@@ -64,14 +64,29 @@ class PluginOpenAI(BaseModel):
     system_prefix: str = ""
     url: str
 
+    @root_validator(pre=True)
+    def trim_strings(cls, values):
+        for field in ["system_prefix"]:
+            if field in values:
+                values[field] = values[field].strip()
+        return values
+
 
 PluginConfUnion = PluginCommand | PluginTool | PluginOpenAI
 PluginConf = Annotated[PluginConfUnion, Field(discriminator="type")]
 
 
 class Conf(BaseModel):
+    system_prefix: str = ""
     commands: dict[str, CommandConf]
     plugins: dict[str, PluginConf]
+
+    @root_validator(pre=True)
+    def trim_strings(cls, values):
+        for field in ["system_prefix"]:
+            if field in values:
+                values[field] = values[field].strip()
+        return values
 
     @root_validator
     def check_plugin_commands(cls, values):
