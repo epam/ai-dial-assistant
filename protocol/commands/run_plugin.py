@@ -193,6 +193,7 @@ class RunPlugin(Command):
 
         chat = CommandChain(
             model=model,
+            name="PLUGIN:" + self.name,
             init_messages=init_messages,
             resp_prompt=RESP_DIALOG_PROMPT,
             ctx=ExecutionContext(command_dict),

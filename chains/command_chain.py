@@ -23,12 +23,13 @@ class CommandChain(BaseChain):
     def __init__(
         self,
         model: ChatOpenAI,
+        name: str,
         init_messages: List[BaseMessage],
         resp_prompt: HumanMessagePromptTemplate,
         ctx: ExecutionContext,
         stop: List[str] | None = None,
     ):
-        super().__init__(model, stop)
+        super().__init__(model, name, stop)
         self.init_messages = init_messages
         self.ctx = ctx
         self.resp_prompt = resp_prompt

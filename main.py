@@ -80,6 +80,7 @@ def main_args() -> None:
 
     chain = CommandChain(
         model=model,
+        name="MAIN",
         init_messages=init_messages,
         resp_prompt=RESP_DIALOG_PROMPT,
         ctx=ExecutionContext(command_dict),

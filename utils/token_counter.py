@@ -33,8 +33,8 @@ class TokenCounter:
     number_of_requests: int = 0
     total_cost: float = 0
 
-    def print(self):
-        print_info("\nToken usage:\n" + indent(str(self), 2))
+    def print(self, prefix: str = ""):
+        print_info(f"\n{prefix}Token usage:\n" + indent(str(self), 2))
 
     def update(self, model_name: str, prompt_ts: int, completion_ts: int):
         self.prompt_tokens = prompt_ts

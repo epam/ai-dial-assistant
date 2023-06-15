@@ -1,9 +1,10 @@
 import json
 from typing import Union
-from langchain.tools import OpenAPISpec, APIOperation
-from pydantic import BaseModel
-from chains.base_chain import BaseChain
 
+from langchain.tools import APIOperation, OpenAPISpec
+from pydantic import BaseModel
+
+from chains.base_chain import BaseChain
 from cli.main_args import parse_args
 from llm.base import create_chat_from_conf
 from prompts.open_api import OPEN_API_SELECTOR_MESSAGE
@@ -61,7 +62,7 @@ def select_open_api_operation(
     args = parse_args()
     model = create_chat_from_conf(args.openai_conf, args.chat_conf)
 
-    chain: BaseChain = BaseChain(model)
+    chain: BaseChain = BaseChain(model, "INNER:open_api_endpoint_selection")
     chain.add_message(
         OPEN_API_SELECTOR_MESSAGE.format(
             api_description=api_description, api_schema=api_schema, query=query
