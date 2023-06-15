@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+from chains.command_chain import CommandChain
+from cli.main_args import parse_args
+from conf.project_conf import (
+    CommandConf,
+    Conf,
+    PluginCommand,
+    PluginConf,
+    PluginOpenAI,
+    PluginTool,
+    read_conf,
+)
+from llm.base import create_chat_from_conf
+from prompts.dialog import RESP_DIALOG_PROMPT, SYSTEM_DIALOG_MESSAGE
+from protocol.commands.base import resolve_constructor
+from protocol.commands.run_plugin import RunPlugin
+from protocol.commands.say_or_ask import SayOrAsk
+from protocol.project_context import CommandDict, ProjectContext
+from utils.open_ai_plugin import get_open_ai_plugin_info
+
+command_template = """
+* {"command": "{{name}}", "args": [{{ command.args | join(", ") }}]}
+{{command.description | trim}}
+The command returns {{command.result}}
+"""
+
+
+def collect_plugin(
+    dict: dict[str, CommandConf],
+    name: str,
+    plugin: PluginConf,
+    commands: dict[str, CommandConf],
+    tools: dict[str, PluginTool],
+    command_dict: CommandDict,
+):
+    if isinstance(plugin, PluginCommand):
+        if name not in dict:
+            raise ValueError(
+                f"Unknown command: {name}. Available commands: {dict.keys()}"
+            )
+        command = dict[name]
+        commands[name] = command
+        command_dict[name] = resolve_constructor(command.implementation)
+
+    elif isinstance(plugin, PluginTool):
+        tools[name] = plugin
+    elif isinstance(plugin, PluginOpenAI):
+        info = get_open_ai_plugin_info(plugin.url)
+        tools[name] = PluginTool(
+            type="tool",
+            system_prefix=plugin.system_prefix,
+            description=info.ai_plugin.description_for_human,
+            commands=["http-request"],
+        )
+
+
+def main_args() -> None:
+    # TODO: do we need this?
+    sys.path.append(os.path.abspath("plugins"))
+
+    args = parse_args()
+    model = create_chat_from_conf(args.openai_conf, args.chat_conf)
+
+    conf = read_conf(Conf, Path("plugins/index.yaml"))
+
+    commands: dict[str, CommandConf] = {}
+    tools: dict[str, PluginTool] = {}
+
+    command_dict: CommandDict = {
+        RunPlugin.token(): RunPlugin,
+        SayOrAsk.token(): SayOrAsk,
+    }
+
+    for name, plugin in conf.plugins.items():
+        collect_plugin(conf.commands, name, plugin, commands, tools, command_dict)
+
+    init_messages = [SYSTEM_DIALOG_MESSAGE.format(commands=commands, tools=tools)]
+
+    chain = CommandChain(
+        model=model,
+        init_messages=init_messages,
+        resp_prompt=RESP_DIALOG_PROMPT,
+        ctx=ProjectContext(command_dict),
+    )
+
+    chain.run_chat()
+
+
+if __name__ == "__main__":
+    main_args()

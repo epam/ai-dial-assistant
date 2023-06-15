@@ -1,0 +1,75 @@
+commands:
+  weather-forecast:
+    implementation: weather_forecast::WeatherForecast
+    description: |
+      This command requests a weather forecast for the given location and date.
+      Example of location: "London, UK". Example of date: "2023-06-05".
+      The location must be a particular geographical location.
+      The date must be in the future or equal to today's date.
+    args:
+      - LOCATION
+      - DATE
+    result: Detailed weather forecast. By default, please convert temperature to Celsius degrees unless stated otherwise.
+
+  wolfram-alpha:
+    implementation: wolfram_alpha::WolframAlpha
+    description: |
+      The command sends a request to Wolfram Alpha and returns the response.
+    args:
+      - REQUEST
+    result: A string containing response URL
+
+  big-number-multiplication:
+    implementation: big_number_multiplication::BigNumberMultiplication
+    description: |
+      This command multiplies a list of big numbers.
+    args:
+      - NUMBER1
+      - NUMBER2
+      - NUMBER_N
+    result: A string with the result of multiplication.
+
+  run-python:
+    implementation: fact_fetcher::RunPython
+    description: |
+      Eval Python code and return the result printed to stdout.
+    args:
+      - PYTHON_CODE
+    result: The stdout of executed Python code.
+
+  http-request:
+    implementation: http_request::HttpRequest
+    description: |
+      This command sends a request to the given URL and returns the response.
+      METHOD argument can be one of the following: GET, POST.
+      URL argument is the URL to send the request to.
+      JSON_DATA argument is optional JSON data to send with the request.
+    args:
+      - METHOD
+      - URL
+      - JSON_DATA
+    result: A string or JSON containing the response
+
+plugins:
+  big-number-multiplication:
+    type: command
+
+  magic-tool:
+    type: tool
+    description: Useful when solving a math problem, needing to draw a plot for input table data, or getting general quantitative facts about the world.
+    commands:
+      - wolfram_alpha
+
+  weather-forecast:
+    type: tool
+    description: Useful when needing to get data about the weather.
+    commands:
+      - weather-forecast
+
+  epam-10k-golden-qna:
+    type: open-ai-plugin
+    url: http://0.0.0.0:5003/.well-known/ai-plugin.json
+
+  epam-10k-semantic-search:
+    type: open-ai-plugin
+    url: http://0.0.0.0:5004/.well-known/ai-plugin.json

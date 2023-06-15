@@ -1,0 +1,151 @@
+system_message: |
+  FactFetcher is a service which allows to answer questions about EPAM 10K document.
+
+  The server address is: http://0.0.0.0:5002
+  It has the following OpenAPI api:
+
+  {
+    "openapi": "3.0.2",
+    "info": {
+      "title": "10K Fact retrieval plugin API",
+      "description": "A retrieval API for answering questions about 10K form",
+      "version": "0.0.1"
+    },
+    "paths": {
+      "/search": {
+        "post": {
+          "summary": "Search",
+          "description": "Finding a answer to the given question in a database of facts. Return None if no answers were found.",
+          "operationId": "search_search_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchQuery"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/QA"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "HTTPValidationError": {
+          "title": "HTTPValidationError",
+          "type": "object",
+          "properties": {
+            "detail": {
+              "title": "Detail",
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ValidationError"
+              }
+            }
+          }
+        },
+        "QA": {
+          "title": "QA",
+          "required": [
+            "question",
+            "answer"
+          ],
+          "type": "object",
+          "properties": {
+            "question": {
+              "title": "Question",
+              "type": "string"
+            },
+            "answer": {
+              "title": "Answer",
+              "type": "string"
+            }
+          }
+        },
+        "SearchQuery": {
+          "title": "SearchQuery",
+          "required": [
+            "question"
+          ],
+          "type": "object",
+          "properties": {
+            "question": {
+              "title": "Question",
+              "type": "string"
+            }
+          }
+        },
+        "ValidationError": {
+          "title": "ValidationError",
+          "required": [
+            "loc",
+            "msg",
+            "type"
+          ],
+          "type": "object",
+          "properties": {
+            "loc": {
+              "title": "Location",
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              }
+            },
+            "msg": {
+              "title": "Message",
+              "type": "string"
+            },
+            "type": {
+              "title": "Error Type",
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  In order to use this service you must:
+
+  1. write a Python program, which makes requests to the server using `requests` library. The program must print to stdout the result of the request in JSON format. You MUST print the result to stdout using `print` method, because the plugin will read it from there.
+  2. run this program using `run-python` command
+  3. return the result of the program execution to the user
+  4. make sure to properly escape special characters in the query message
+commands:
+  run-python:
+    implementation: RunPython
+    description: |
+      Eval Python code and return the result printed to stdout.
+    args:
+      - PYTHON_CODE
+    result: The stdout of executed Python code.

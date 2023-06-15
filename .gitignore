@@ -1,0 +1,16 @@
+**/node_modules/
+*.egg-info
+.DS_Store
+__pycache__
+.vs/
+.gradle/
+.idea/
+*.suo
+*.user
+*.nupkg
+*.dll
+obj/
+bin/
+build/
+out/
+.tmp
