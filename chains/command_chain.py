@@ -4,13 +4,11 @@ from typing import List
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts.chat import HumanMessagePromptTemplate
 from langchain.schema import BaseMessage
-from chains.base_chain import BaseChain
 
-from protocol.command_result import (
-    execute_command,
-)
+from chains.base_chain import BaseChain
+from protocol.command_result import execute_command
 from protocol.commands.end_dialog import EndDialog
-from protocol.project_context import ProjectContext
+from protocol.execution_context import ExecutionContext
 
 
 class InvocationResult:
@@ -27,7 +25,7 @@ class CommandChain(BaseChain):
         model: ChatOpenAI,
         init_messages: List[BaseMessage],
         resp_prompt: HumanMessagePromptTemplate,
-        ctx: ProjectContext,
+        ctx: ExecutionContext,
         stop: List[str] | None = None,
     ):
         super().__init__(model, stop)

@@ -12,7 +12,7 @@ class RunPython(Command):
 
     @staticmethod
     def token():
-        return "big-number-multiplication"
+        return "run-python"
 
     def __init__(self, dict: Dict):
         self.dict = dict

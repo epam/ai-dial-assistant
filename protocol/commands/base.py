@@ -39,10 +39,7 @@ class Command(ABC):
 CommandConstructor = Callable[[dict], Command]
 
 
-def resolve_constructor(implementation: str | CommandConstructor) -> CommandConstructor:
-    if not isinstance(implementation, str):
-        return implementation
-
+def resolve_constructor(implementation: str) -> CommandConstructor:
     parts = implementation.split("::")
     if len(parts) != 2:
         raise ValueError(
@@ -50,5 +47,15 @@ def resolve_constructor(implementation: str | CommandConstructor) -> CommandCons
         )
 
     module_name, class_name = parts
-    plugin = importlib.import_module(module_name)
-    return getattr(plugin, class_name)
+
+    try:
+        plugin = importlib.import_module(module_name)
+    except ModuleNotFoundError as e:
+        raise ValueError(f"Failed to load module '{module_name}': {str(e)}")
+
+    try:
+        return getattr(plugin, class_name)
+    except AttributeError as e:
+        raise ValueError(
+            f"Failed to load class '{class_name}' from '{module_name}': {str(e)}. Available classes: {dir(plugin)}"
+        )

@@ -1,10 +1,10 @@
 from pathlib import Path
-from typing import Annotated, Literal, Type, TypeVar, List
+from typing import Annotated, List, Literal, Type, TypeVar
 
 import yaml
 from pydantic import BaseModel, Field, parse_obj_as, root_validator
-from protocol.commands.base import CommandConstructor
 
+from protocol.commands.base import CommandConstructor, resolve_constructor
 from utils.yaml_loader import Loader
 
 
@@ -20,7 +20,7 @@ class ChatConf(BaseModel):
 
 
 class CommandConf(BaseModel):
-    implementation: str | CommandConstructor
+    implementation: CommandConstructor  # A string <model_name>::<class_name> is parsed to a CommandConstructor on construction
     description: str
     args: List[str]
     result: str
@@ -30,6 +30,14 @@ class CommandConf(BaseModel):
         for field in ["description", "result"]:
             if field in values:
                 values[field] = values[field].strip()
+        return values
+
+    @root_validator(pre=True)
+    def parse_implementation(cls, values):
+        if "implementation" in values:
+            impl = values["implementation"]
+            if isinstance(impl, str):
+                values["implementation"] = resolve_constructor(impl)
         return values
 
 

@@ -19,14 +19,8 @@ from prompts.dialog import RESP_DIALOG_PROMPT, SYSTEM_DIALOG_MESSAGE
 from protocol.commands.base import resolve_constructor
 from protocol.commands.run_plugin import RunPlugin
 from protocol.commands.say_or_ask import SayOrAsk
-from protocol.project_context import CommandDict, ProjectContext
+from protocol.execution_context import CommandDict, ExecutionContext
 from utils.open_ai_plugin import get_open_ai_plugin_info
-
-command_template = """
-* {"command": "{{name}}", "args": [{{ command.args | join(", ") }}]}
-{{command.description | trim}}
-The command returns {{command.result}}
-"""
 
 
 def collect_plugin(
@@ -44,7 +38,7 @@ def collect_plugin(
             )
         command = dict[name]
         commands[name] = command
-        command_dict[name] = resolve_constructor(command.implementation)
+        command_dict[name] = command.implementation
 
     elif isinstance(plugin, PluginTool):
         tools[name] = plugin
@@ -84,7 +78,7 @@ def main_args() -> None:
         model=model,
         init_messages=init_messages,
         resp_prompt=RESP_DIALOG_PROMPT,
-        ctx=ProjectContext(command_dict),
+        ctx=ExecutionContext(command_dict),
     )
 
     chain.run_chat()

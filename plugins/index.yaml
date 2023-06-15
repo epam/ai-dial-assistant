@@ -20,7 +20,7 @@ commands:
     result: A string containing response URL
 
   big-number-multiplication:
-    implementation: big_number_multiplication::BigNumberMultiplication
+    implementation: mult_nums::BigNumberMultiplication
     description: |
       This command multiplies a list of big numbers.
     args:
@@ -30,7 +30,7 @@ commands:
     result: A string with the result of multiplication.
 
   run-python:
-    implementation: fact_fetcher::RunPython
+    implementation: run_python::RunPython
     description: |
       Eval Python code and return the result printed to stdout.
     args:
@@ -54,7 +54,7 @@ plugins:
   big-number-multiplication:
     type: command
 
-  magic-tool:
+  math-plugin:
     type: tool
     description: Useful when solving a math problem, needing to draw a plot for input table data, or getting general quantitative facts about the world.
     commands:

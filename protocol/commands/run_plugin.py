@@ -1,10 +1,9 @@
 from pathlib import Path
 from typing import Dict, Tuple
-
-from typing_extensions import override
 from urllib.parse import urlparse
 
 from jinja2 import Template
+from typing_extensions import override
 
 from chains.command_chain import CommandChain
 from cli.main_args import parse_args
@@ -34,7 +33,7 @@ from prompts.dialog import (
 from protocol.commands.base import Command, resolve_constructor
 from protocol.commands.end_dialog import EndDialog
 from protocol.commands.open_api import OpenAPIChatCommand
-from protocol.project_context import CommandDict, ProjectContext
+from protocol.execution_context import CommandDict, ExecutionContext
 from utils.open_ai_plugin import get_open_ai_plugin_info
 from utils.printing import print_exception
 
@@ -181,7 +180,7 @@ class RunPlugin(Command):
         command_dict: CommandDict = {EndDialog.token(): EndDialog}
 
         for name, command_spec in commands.items():
-            command_dict[name] = resolve_constructor(command_spec.implementation)
+            command_dict[name] = command_spec.implementation
 
         init_messages = [
             PLUGIN_SYSTEM_DIALOG_MESSAGE.format(
@@ -198,7 +197,7 @@ class RunPlugin(Command):
             model=model,
             init_messages=init_messages,
             resp_prompt=RESP_DIALOG_PROMPT,
-            ctx=ProjectContext(command_dict),
+            ctx=ExecutionContext(command_dict),
         )
 
         try:

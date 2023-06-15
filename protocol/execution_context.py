@@ -1,12 +1,12 @@
 import json
-from typing import Dict, Callable, List
+from typing import Callable, Dict, List
 
 from protocol.commands.base import Command
 
 CommandDict = Dict[str, Callable[[Dict], Command]]
 
 
-class ProjectContext:
+class ExecutionContext:
     def __init__(self, command_dict: CommandDict):
         self.command_dict = command_dict
 
