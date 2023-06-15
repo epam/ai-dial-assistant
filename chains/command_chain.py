@@ -6,7 +6,7 @@ from langchain.prompts.chat import HumanMessagePromptTemplate
 from langchain.schema import BaseMessage
 
 from chains.base_chain import BaseChain
-from protocol.command_result import execute_command
+from protocol.command_result import CommandResultDict, Status, execute_command
 from protocol.commands.end_dialog import EndDialog
 from protocol.execution_context import ExecutionContext
 
@@ -50,15 +50,26 @@ class CommandChain(BaseChain):
                 return result.final_response
 
     def _execute_commands(self, invocation: str) -> InvocationResult:
-        commands = self.ctx.parse_commands(invocation)
-        responses = []
+        responses: List[CommandResultDict] = []
         final_response: str | None = None
-        for command in commands:
-            responses.append(execute_command(command, self.response_id).to_dict())
-            self.response_id += 1
 
-            if isinstance(command, EndDialog):
-                final_response = command.response
-                break
+        try:
+            commands = self.ctx.parse_commands(invocation)
+            for command in commands:
+                responses.append(execute_command(command, self.response_id).to_dict())
+                self.response_id += 1
+
+                if isinstance(command, EndDialog):
+                    final_response = command.response
+                    break
+
+        except Exception as e:
+            final_response = None
+            responses = [
+                CommandResultDict(
+                    id=self.response_id, status=Status.ERROR, response=str(e)
+                )
+            ]
+            self.response_id += 1
 
         return InvocationResult(json.dumps({"responses": responses}), final_response)

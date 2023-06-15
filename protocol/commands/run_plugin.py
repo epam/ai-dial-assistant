@@ -3,6 +3,7 @@ from typing import Dict, Tuple
 from urllib.parse import urlparse
 
 from jinja2 import Template
+from langchain.tools import APIOperation
 from typing_extensions import override
 
 from chains.command_chain import CommandChain
@@ -30,7 +31,7 @@ from prompts.dialog import (
     open_ai_plugin_template,
     open_api_plugin_template,
 )
-from protocol.commands.base import Command, resolve_constructor
+from protocol.commands.base import Command
 from protocol.commands.end_dialog import EndDialog
 from protocol.commands.open_api import OpenAPIChatCommand
 from protocol.execution_context import CommandDict, ExecutionContext
@@ -73,9 +74,6 @@ class RunPlugin(Command):
         if isinstance(plugin, PluginCommand):
             raise ValueError(f"Command isn't a plugin: {self.name}")
 
-        commands: dict[str, CommandConf] = {}
-        system_prefix = ""
-
         if isinstance(plugin, PluginTool):
             system_prefix, commands = self._process_plugin_tool(conf, plugin)
             return self._run_plugin(system_prefix, commands)
@@ -110,7 +108,7 @@ class RunPlugin(Command):
             api_description=api_description, api_schema=api_schema
         )
 
-        def create_command(op):
+        def create_command(op: APIOperation):
             return lambda d: OpenAPIChatCommand(op, d)
 
         commands: dict[str, CommandConf] = {}

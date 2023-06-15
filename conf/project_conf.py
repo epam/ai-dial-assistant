@@ -53,7 +53,7 @@ class PluginTool(BaseModel):
 
     @root_validator(pre=True)
     def trim_strings(cls, values):
-        for field in ["description"]:
+        for field in ["description", "system_prefix"]:
             if field in values:
                 values[field] = values[field].strip()
         return values
@@ -72,6 +72,27 @@ PluginConf = Annotated[PluginConfUnion, Field(discriminator="type")]
 class Conf(BaseModel):
     commands: dict[str, CommandConf]
     plugins: dict[str, PluginConf]
+
+    @root_validator
+    def check_plugin_commands(cls, values):
+        commands = values.get("commands")
+        plugins = values.get("plugins")
+
+        if not (commands and plugins):
+            return values
+
+        available_commands = set(commands.keys())
+
+        for plugin in plugins.values():
+            if not isinstance(plugin, PluginTool):
+                continue
+            for command in plugin.commands:
+                if command not in available_commands:
+                    raise ValueError(
+                        f"Unknown command: {command}. Available commands: {available_commands}"
+                    )
+
+        return values
 
 
 T = TypeVar("T")

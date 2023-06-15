@@ -56,13 +56,13 @@ plugins:
 
   math-plugin:
     type: tool
-    description: Useful when solving a math problem, needing to draw a plot for input table data, or getting general quantitative facts about the world.
+    description: Useful for solving a math problem, plotting a graph, or retrieving general quantitative facts about the world.
     commands:
-      - wolfram_alpha
+      - wolfram-alpha
 
   weather-forecast:
     type: tool
-    description: Useful when needing to get data about the weather.
+    description: Useful for fetching weather forecast for a particular location and date.
     commands:
       - weather-forecast
 

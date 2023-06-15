@@ -16,7 +16,6 @@ from conf.project_conf import (
 )
 from llm.base import create_chat_from_conf
 from prompts.dialog import RESP_DIALOG_PROMPT, SYSTEM_DIALOG_MESSAGE
-from protocol.commands.base import resolve_constructor
 from protocol.commands.run_plugin import RunPlugin
 from protocol.commands.say_or_ask import SayOrAsk
 from protocol.execution_context import CommandDict, ExecutionContext
@@ -53,7 +52,7 @@ def collect_plugin(
 
 
 def main_args() -> None:
-    # TODO: do we need this?
+    # Need to add this so that plugin modules residing at "plugins" folder could be references in index.yaml using relative module paths. Otherwise, we need to prefix all module paths with "plugins.".
     sys.path.append(os.path.abspath("plugins"))
 
     args = parse_args()

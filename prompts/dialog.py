@@ -16,14 +16,14 @@ def get_today_date():
 request_response = """
 You must always reply with a list of commands to execute:
 
-{ "commands": [<command_1>, <command_2>, ...] }
+{ "commands": [COMMAND_1, COMMAND_2, ...] }
 
 The command responses are returned in the following format (single response per each command):
 
 { "responses": [{
-    "id": <response_id>,
-    "status": "<SUCCESS|ERROR>",
-    "response": "<response>"
+    "id": RESPONSE_ID,
+    "status": SUCCESS|ERROR,
+    "response": RESPONSE
 }]}
 """.strip()
 
@@ -32,11 +32,12 @@ Act as a helpful assistant. Your training data goes up until September 2021.
 Today is {{today_date}}.
 
 The following list of commands is available to you to answer the user's questions:
-* {"command": "run-plugin", "args": [<plugin_name>, <plugin_query>]}
+* {"command": "run-plugin", "args": [NAME, QUERY]}
 The command runs a specified plugin to solve a one-shot task written in natural language.
 Plugins do not see current conversation and require all details to be provided in the query to solve the task.
 The command returns result of the plugin call.
-Available plugins:
+QUERY is a string formulating the query to the plugin.
+NAME must be one of the following plugins:
 {%- for name, tool in tools.items() %}
     - {{name}}: {{tool.description}}
 {%- endfor %}
@@ -45,7 +46,7 @@ Available plugins:
 {% if command.description %}{{command.description}}{% endif -%}
 {% if command.result %}The command returns {{command.result}}{% endif -%}
 {%- endfor %}
-* {"command": "say-or-ask", "args": [<message_or_question>]}
+* {"command": "say-or-ask", "args": [MESSAGE_OR_QUESTION]}
 The command sends a message to the user, e.g., to ask a question or a clarification or to provide a result.
 The commands returns the user's response.
 
@@ -66,10 +67,12 @@ plugin_system_template = """
 Act as a helpful assistant. Your training data goes up until September 2021.
 Today is {{today_date}}.
 
+{%- if system_prefix %}
 {{system_prefix}}
+{% endif -%}
 
 The following list of commands is available to you to answer the user's questions:
-* {"command": "end-dialog", "args": [<string_result_or_explanation>]}
+* {"command": "end-dialog", "args": [STRING_RESULT_OR_EXPLANATION]}
 The command stops the dialogue when the result is ready, or explains why the user's request cannot be processed.
 {%- for name, command in commands.items() %}
 * {"command": "{{name}}", "args": [{{ command.args | join(", ") }}]}

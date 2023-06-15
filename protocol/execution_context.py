@@ -1,30 +1,38 @@
-import json
-from typing import Callable, Dict, List
+from typing import Dict, List
 
-from protocol.commands.base import Command
+from pydantic import BaseModel
 
-CommandDict = Dict[str, Callable[[Dict], Command]]
+from protocol.commands.base import Command, CommandConstructor
+
+CommandDict = Dict[str, CommandConstructor]
+
+
+class CommandListElem(BaseModel):
+    command: str
+
+    class Config:
+        extra = "allow"
+
+
+class CommandList(BaseModel):
+    commands: List[CommandListElem]
 
 
 class ExecutionContext:
     def __init__(self, command_dict: CommandDict):
         self.command_dict = command_dict
 
-    def create_command(self, dict: Dict) -> Command:
-        if "command" not in dict:
+    def _create_command(self, cmd: CommandListElem) -> Command:
+        name = cmd.command
+        available_commands = set(self.command_dict.keys())
+
+        if name not in available_commands:
             raise Exception(
-                f"Can't find 'command' key in the Json describing a command: {json.dumps(dict)}"
+                f"The command '{name}' is expected to be one of {available_commands}"
             )
 
-        command = dict["command"]
-
-        if command not in self.command_dict.keys():
-            raise Exception(
-                f"The command '{command}' is expected to be one of {self.command_dict.keys()}"
-            )
-        else:
-            return self.command_dict[command](dict)
+        return self.command_dict[name](cmd.dict())
 
     def parse_commands(self, command_str: str) -> List[Command]:
-        invocation = json.loads(command_str)
-        return list(map(lambda d: self.create_command(d), invocation["commands"]))
+        commands = CommandList.parse_raw(command_str).commands
+        return list(map(lambda d: self._create_command(d), commands))

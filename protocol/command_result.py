@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict
+from typing import TypedDict
 
 from protocol.commands.base import Command
 from utils.printing import print_exception
@@ -8,6 +8,12 @@ from utils.printing import print_exception
 class Status(str, Enum):
     ERROR = "ERROR"
     SUCCESS = "SUCCESS"
+
+
+class CommandResultDict(TypedDict):
+    id: int
+    status: Status
+    response: str
 
 
 class CommandResult:
@@ -43,8 +49,8 @@ class CommandResult:
         self.status = status
         self.kwargs = kwargs
 
-    def to_dict(self) -> Dict:
-        return {"id": self.id, "status": self.status, "response": self.response}
+    def to_dict(self) -> CommandResultDict:
+        return CommandResultDict(id=self.id, status=self.status, response=self.response)
 
 
 def execute_command(command: Command, response_id: int) -> CommandResult:
