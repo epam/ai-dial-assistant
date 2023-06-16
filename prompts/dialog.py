@@ -43,14 +43,14 @@ The command returns result of the plugin call.
 QUERY is a string formulating the query to the plugin.
 NAME must be one of the following plugins:
 {%- for name, tool in tools.items() %}
-    - {{name}}: {{tool.description}}
+    - {{name}}: {{tool.description | decap}}
 {%- endfor %}
 {%- for name, command in commands.items() %}
 * {"command": "{{name}}", "args": [{{ command.args | join(", ") }}]}
 {%- if command.description %}
 {{command.description}}{% endif %}
 {%- if command.result %}
-The command returns {{command.result}}{% endif %}
+The command returns {{command.result | decap}}{% endif %}
 {%- endfor %}
 * {"command": "say-or-ask", "args": [MESSAGE_OR_QUESTION]}
 The command sends a message to the user, e.g., to ask a question or a clarification or to provide a result.
@@ -81,10 +81,10 @@ The following list of commands is available to you to answer the user's question
 The command stops the dialogue when the result is ready, or explains why the user's request cannot be processed.
 {%- for name, command in commands.items() %}
 * {"command": "{{name}}", "args": [{{ command.args | join(", ") }}]}
-{%- if command.description %}
+{%- if command.description | decap %}
 {{command.description}}{% endif %}
 {%- if command.result %}
-The command returns {{command.result}}{% endif %}
+The command returns {{command.result | decap}}{% endif %}
 {%- endfor %}
 
 {{request_response}}

@@ -5,3 +5,9 @@ def indent(text, num_spaces, start_symbol=None):
     lines = text.splitlines()
     indented_lines = [indentation + line for line in lines]
     return "\n".join(indented_lines)
+
+
+def decapitalize(s: str) -> str:
+    if not s:
+        return s
+    return s[0].lower() + s[1:]

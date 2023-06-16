@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+from utils.init import init
+
+init()
+
 import os
 import sys
 from pathlib import Path
@@ -20,6 +24,7 @@ from protocol.commands.run_plugin import RunPlugin
 from protocol.commands.say_or_ask import SayOrAsk
 from protocol.execution_context import CommandDict, ExecutionContext
 from utils.open_ai_plugin import get_open_ai_plugin_info
+from utils.optional import or_else
 
 
 def collect_plugin(
@@ -47,12 +52,14 @@ def collect_plugin(
         tools[name] = PluginTool(
             type="tool",
             system_prefix=plugin.system_prefix,
-            description=info.ai_plugin.description_for_human,
+            description=or_else(
+                info.open_api.info.description, info.ai_plugin.description_for_human
+            ),
             commands=[],
         )
 
 
-def main_args() -> None:
+def main() -> None:
     # Need to add this so that plugin modules residing at "plugins" folder could be references in index.yaml using relative module paths. Otherwise, we need to prefix all module paths with "plugins."
     sys.path.append(os.path.abspath("plugins"))
 
@@ -90,4 +97,4 @@ def main_args() -> None:
 
 
 if __name__ == "__main__":
-    main_args()
+    main()

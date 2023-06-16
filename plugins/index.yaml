@@ -60,8 +60,9 @@ commands:
 system_prefix: |
   Display image URLs with Markdown syntax: ![URL]
 
-  Use epam-10k-* plugins to answer questions about EPAM.
-  First try golden-qna. If it has failed (partially or completely) to answer the question, then try semantic-search to find the missing pieces of information.
+  Use 'epam-10k-golden-qna' and 'epam-10k-semantic-search' plugins to answer questions about EPAM in this particular order.
+  First try 'epam-10k-golden-qna'. If it didn't answer the question completely,
+  then try 'epam-10k-semantic-search' to find missing pieces of information.
 
 plugins:
   big-number-multiplication:
