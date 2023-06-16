@@ -86,8 +86,8 @@ plugins:
 
   epam-10k-golden-qna:
     type: open-ai-plugin
-    url: http://0.0.0.0:5003/.well-known/ai-plugin.json
+    url: http://localhost:5003/.well-known/ai-plugin.json
 
   epam-10k-semantic-search:
     type: open-ai-plugin
-    url: http://0.0.0.0:5004/.well-known/ai-plugin.json
+    url: http://localhost:5004/.well-known/ai-plugin.json

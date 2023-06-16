@@ -38,6 +38,6 @@ def get_open_ai_plugin_info(url: str) -> OpenAIPluginInfo:
         raise Exception(f"Unable to fetch data from {url}")
 
     ai_plugin = parse_obj_as(AIPluginConf, response.json())
-    open_api = OpenAPISpec.from_url(ai_plugin.api.url)
+    open_api = OpenAPISpec.from_url(ai_plugin.api.url.replace("0.0.0.0", "localhost"))
 
     return OpenAIPluginInfo(ai_plugin=ai_plugin, open_api=open_api)

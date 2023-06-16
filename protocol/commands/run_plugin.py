@@ -7,6 +7,7 @@ from langchain.tools import APIOperation
 from typing_extensions import override
 
 from chains.command_chain import CommandChain
+from chains.model_client import ModelClient
 from cli.main_args import parse_args
 from conf.project_conf import (
     CommandConf,
@@ -192,15 +193,14 @@ class RunPlugin(Command):
         model = create_chat_from_conf(args.openai_conf, args.chat_conf)
 
         chat = CommandChain(
-            model=model,
             name="PLUGIN:" + self.name,
-            init_messages=init_messages,
+            model_client=ModelClient(model=model),
             resp_prompt=RESP_DIALOG_PROMPT,
             ctx=ExecutionContext(command_dict),
         )
 
         try:
-            return chat.run_chat()
+            return chat.run_chat(init_messages)
         except Exception as e:
             print_exception()
             return "ERROR: " + str(e)
