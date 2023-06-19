@@ -1,5 +1,6 @@
+from enum import Enum
 from pathlib import Path
-from typing import Annotated, List, Literal, Type, TypeVar
+from typing import Annotated, List, Literal, Optional, Type, TypeVar
 
 import yaml
 from pydantic import BaseModel, Field, parse_obj_as, root_validator
@@ -8,11 +9,27 @@ from protocol.commands.base import CommandConstructor, resolve_constructor
 from utils.yaml_loader import Loader
 
 
+class AzureConf(BaseModel):
+    deployment_name: str
+    openai_api_base: str
+    openai_api_key: str
+    openai_api_type: str = "azure"
+    openai_api_version: str = "2023-03-15-preview"
+
+
+class LogLevel(str, Enum):
+    INFO = "info"
+    DEBUG = "debug"
+
+
 class OpenAIConf(BaseModel):
     model_name: str = "gpt-4-0314"
     temperature: float = 0.0
     request_timeout: int = 10
-    openai_log_level: str = "info"
+    openai_log_level: LogLevel = LogLevel.INFO
+    openai_api_key: str
+
+    azure: Optional[AzureConf] = None
 
 
 class ChatConf(BaseModel):

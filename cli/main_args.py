@@ -2,8 +2,6 @@ import argparse
 from pathlib import Path
 from typing import NamedTuple
 
-import openai
-
 from conf.project_conf import ChatConf, OpenAIConf, read_conf
 
 
@@ -47,7 +45,5 @@ def parse_args() -> Args:
         chat_conf=chat_conf,
         openai_conf=openai_conf,
     )
-
-    openai.log = args.openai_conf.openai_log_level
 
     return args

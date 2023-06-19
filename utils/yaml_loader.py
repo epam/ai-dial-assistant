@@ -4,9 +4,11 @@ from typing import IO, Any
 
 import yaml
 
+from utils.env import get_env
+
 
 class Loader(yaml.SafeLoader):
-    """YAML Loader with `!include` constructor."""
+    """YAML Loader with the state: root directory of the loaded file."""
 
     _root: str
 
@@ -38,4 +40,12 @@ def construct_include(loader: Loader, node: yaml.Node) -> Any:
             return "".join(f.readlines())
 
 
+def construct_env(loader: Loader, node: yaml.Node) -> Any:
+    """Lookup environment variable referenced at node."""
+
+    name = loader.construct_yaml_str(node)
+    return get_env(name)
+
+
 yaml.add_constructor("!include", construct_include, Loader)
+yaml.add_constructor("!env", construct_env, Loader)
