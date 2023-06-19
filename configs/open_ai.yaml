@@ -4,3 +4,4 @@ request_timeout: 10
 openai_log_level: info
 openai_api_key: !env "OPENAI_API_KEY"
 # azure: !include "deltix_azure.yaml"
+# azure: !include "proxy_azure.yaml"
