@@ -37,7 +37,12 @@ class ExecutionContext:
     def parse_commands(self, command_str: str) -> List[Command]:
         try:
             obj = json.loads(command_str)
+        except Exception as e:
+            raise Exception(f"Can't parse the JSON object: {str(e)}")
+
+        try:
             commands = CommandList.parse_obj(obj).commands
         except Exception as e:
             raise Exception(f"Can't parse commands: {str(e)}")
+
         return list(map(lambda d: self._create_command(d), commands))
