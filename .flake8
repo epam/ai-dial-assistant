@@ -3,7 +3,8 @@
 # F541 f-string is missing placeholders
 # W503 line break before binary operator
 # E203 whitespace before ':' (triggered on list slices like xs[i : i + 5])
-ignore = E501, F541, W503, E203
+# E402 module level import not at top of file
+ignore = E501, F541, W503, E203, E402
 exclude =
     .tmp,
     .venv,

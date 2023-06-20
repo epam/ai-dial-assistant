@@ -1,5 +1,6 @@
+import json
 from enum import Enum
-from typing import TypedDict
+from typing import Any, List, TypedDict
 
 from protocol.commands.base import Command
 from utils.printing import print_exception
@@ -13,14 +14,18 @@ class Status(str, Enum):
 class CommandResultDict(TypedDict):
     id: int
     status: Status
-    response: str
+    response: Any
+
+
+def responses_to_text(responses: List[CommandResultDict]) -> str:
+    return json.dumps({"responses": responses})
 
 
 class CommandResult:
     command: Command
     """The original command requested by the model"""
 
-    response: str
+    response: Any
     """Response provided by the human.
     Contains both result of a successful command execution and
     error messages for the failed one."""
@@ -38,7 +43,7 @@ class CommandResult:
     def __init__(
         self,
         command: Command,
-        response: str,
+        response: Any,
         response_id: int,
         status: Status,
         **kwargs
@@ -54,7 +59,7 @@ class CommandResult:
 
 
 def execute_command(command: Command, response_id: int) -> CommandResult:
-    response: str
+    response: Any
     try:
         response = command.execute()
         status = Status.SUCCESS

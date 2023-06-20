@@ -6,7 +6,7 @@ from jinja2 import Template
 from langchain.tools import APIOperation
 from typing_extensions import override
 
-from chains.command_chain import CommandChain
+from chains.command_chain import ChainCallback, CommandChain
 from chains.model_client import ModelClient
 from cli.main_args import parse_args
 from conf.project_conf import (
@@ -47,6 +47,7 @@ def get_base_url(url: str) -> str:
 
 
 class RunPlugin(Command):
+    callback: ChainCallback | None
     name: str
     query: str
 
@@ -54,12 +55,13 @@ class RunPlugin(Command):
     def token():
         return "run-plugin"
 
-    def __init__(self, dict: Dict):
+    def __init__(self, callback: ChainCallback | None, dict: Dict):
         self.dict = dict
         assert "args" in dict and isinstance(dict["args"], list)
         assert len(dict["args"]) == 2
         self.name = dict["args"][0]
         self.query = dict["args"][1]
+        self.callback = callback
 
     @override
     def execute(self) -> str:
@@ -193,14 +195,14 @@ class RunPlugin(Command):
         model = create_chat_from_conf(args.openai_conf, args.chat_conf)
 
         chat = CommandChain(
-            name="PLUGIN:" + self.name,
             model_client=ModelClient(model=model),
+            name="PLUGIN:" + self.name,
             resp_prompt=RESP_DIALOG_PROMPT,
             ctx=ExecutionContext(command_dict),
         )
 
         try:
-            return chat.run_chat(init_messages)
+            return chat.run_chat(init_messages, self.callback)
         except Exception as e:
             print_exception()
             return "ERROR: " + str(e)

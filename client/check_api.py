@@ -5,7 +5,7 @@ import requests
 if __name__ == "__main__":
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"
+        "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}",
     }
 
     response = requests.post(
@@ -22,18 +22,18 @@ if __name__ == "__main__":
                 # {"role": "plugin", "content": "call weather-forecast"},
                 # {"role": "end-plugin", "content": "30C"},
                 # {"role": "assistant", "content": "The weather in Malaga is 30C"},
-
                 # {"role": "assistant", "content": "To provide the weather forecast, I need to know your location. Could you please tell me where you are?"},
                 # {"role": "user", "content": "Malaga"},
             ],
             "temperature": 0,
-            "stream": True
-        })
+            "stream": True,
+        },
+    )
 
     for line in response.iter_lines():
         # filter out keep-alive new lines
         if line:
-            decoded_line = line.decode('utf-8')
+            decoded_line = line.decode("utf-8")
             print(decoded_line)
 
     # print(response.text)

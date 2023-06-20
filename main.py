@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from chains.model_client import ModelClient
 from utils.init import init
 
 init()
@@ -8,7 +9,6 @@ import sys
 from pathlib import Path
 
 from chains.command_chain import CommandChain
-from chains.model_client import ModelClient
 from cli.main_args import parse_args
 from conf.project_conf import (
     CommandConf,
@@ -73,14 +73,18 @@ def main() -> None:
     tools: dict[str, PluginTool] = {}
 
     command_dict: CommandDict = {
-        RunPlugin.token(): RunPlugin,
+        RunPlugin.token(): lambda dict: RunPlugin(None, dict),
         SayOrAsk.token(): SayOrAsk,
     }
 
     for name, plugin in conf.plugins.items():
         collect_plugin(conf.commands, name, plugin, commands, tools, command_dict)
 
-    init_messages = [SYSTEM_DIALOG_MESSAGE.format(commands=commands, tools=tools)]
+    init_messages = [
+        SYSTEM_DIALOG_MESSAGE.format(
+            system_prefix=conf.system_prefix, commands=commands, tools=tools
+        )
+    ]
 
     chain = CommandChain(
         name="MAIN",

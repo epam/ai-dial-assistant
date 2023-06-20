@@ -20,4 +20,4 @@ class EndDialog(Command):
 
     @override
     def execute(self) -> str:
-        pass
+        return "End dialog"

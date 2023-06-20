@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
 import json
 import os
-import queue
 import sys
 import threading
 import time
 import uuid
 from pathlib import Path
 from queue import Queue
-from typing import List, Any
+from typing import Any, List
 
 from flask import Flask, Response, request
-from langchain.schema import BaseMessage, AIMessage, HumanMessage
+from langchain.schema import AIMessage, BaseMessage, HumanMessage
 from typing_extensions import override
 
-from chains.command_chain import CommandChain, ChainCallback
+from chains.command_chain import ChainCallback, CommandChain
 from chains.model_client import ModelClient
 from cli.main_args import parse_args
-from conf.project_conf import CommandConf, PluginTool, read_conf, Conf
+from conf.project_conf import CommandConf, Conf, PluginTool, read_conf
 from llm.base import create_chat_from_conf
 from main import collect_plugin
-from prompts.dialog import SYSTEM_DIALOG_MESSAGE, RESP_DIALOG_PROMPT
+from prompts.dialog import RESP_DIALOG_PROMPT, SYSTEM_DIALOG_MESSAGE
+from protocol.command_result import CommandResultDict, Status, responses_to_text
+from protocol.commands.base import CommandObject, commands_to_text
 from protocol.commands.run_plugin import RunPlugin
 from protocol.commands.say_or_ask import SayOrAsk
 from protocol.execution_context import CommandDict, ExecutionContext
@@ -28,7 +29,7 @@ from protocol.execution_context import CommandDict, ExecutionContext
 app = Flask(__name__)
 
 
-class MyCallback(ChainCallback):
+class ChunkCallback(ChainCallback):
     queue = Queue[Any]()
 
     @override
@@ -51,29 +52,37 @@ def run_chat(chain: CommandChain, messages: List[BaseMessage], callback: ChainCa
 
 
 def wrap_message(response_id: str, timestamp: float, choice: dict):
-    return "data: " + json.dumps({
-        "id": response_id,
-        "object": "chat.completion",
-        "created": timestamp,
-        "choices": [choice],
-        "usage": {
-            "prompt_tokens": 9,
-            "completion_tokens": 12,
-            "total_tokens": 21
-        }
-    }) + "\n"
+    return (
+        "data: "
+        + json.dumps(
+            {
+                "id": response_id,
+                "object": "chat.completion",
+                "created": timestamp,
+                "choices": [choice],
+                "usage": {
+                    "prompt_tokens": 9,
+                    "completion_tokens": 12,
+                    "total_tokens": 21,
+                },
+            }
+        )
+        + "\n"
+    )
 
 
-@app.route('/chat/completions', methods=['POST'])
+@app.route("/chat/completions", methods=["POST"])
 def index():
     data = request.json
-    messages = data['messages']
+    messages = data["messages"]  # type: ignore
 
     commands: dict[str, CommandConf] = {}
     tools: dict[str, PluginTool] = {}
 
+    callback = ChunkCallback()
+
     command_dict: CommandDict = {
-        RunPlugin.token(): RunPlugin,
+        RunPlugin.token(): lambda dict: RunPlugin(callback, dict),
         SayOrAsk.token(): SayOrAsk,
     }
 
@@ -84,17 +93,16 @@ def index():
     args = parse_args()
     model = create_chat_from_conf(args.openai_conf, args.chat_conf)
 
+    history = parse_history(messages, commands, tools)
+    response_id = str(uuid.uuid4())
+    timestamp = time.time()
+
     chain = CommandChain(
         model_client=ModelClient(model=model),
-        name="server",
+        name="SERVER",
         resp_prompt=RESP_DIALOG_PROMPT,
         ctx=ExecutionContext(command_dict),
     )
-
-    history = parse_history(messages, commands, tools)
-    callback = MyCallback()
-    response_id = str(uuid.uuid4())
-    timestamp = time.time()
 
     def event_stream():
         thread = threading.Thread(target=run_chat, args=(chain, history, callback))
@@ -102,55 +110,47 @@ def index():
         while True:
             item = callback.queue.get()
             if item == {}:
-                choice = {
-                    "index": 0,
-                    "delta": {},
-                    "finish_reason": "stop"
-                }
+                choice = {"index": 0, "delta": {}, "finish_reason": "stop"}
                 message = wrap_message(response_id, timestamp, choice)
-                # print(message, end="")
                 yield message
                 yield "data: [DONE]\n"
                 break
 
-            choice = {
-                "index": 0,
-                "delta": item
-            }
+            choice = {"index": 0, "delta": item}
             message = wrap_message(response_id, timestamp, choice)
-            # print(message, end="")
             yield message
 
         thread.join()
 
-    return Response(event_stream(), mimetype="text/event-stream", headers={'Content-Type': 'application/json'})
+    return Response(
+        event_stream(),
+        mimetype="text/event-stream",
+        headers={"Content-Type": "application/json"},
+    )
 
 
-def parse_command(invocation: str):
+def parse_command(invocation: str) -> CommandObject:
     args_index = invocation.index("(")
     return {
         "command": invocation[:args_index],
-        "args": json.loads("[" + invocation[args_index + 1:-1].removesuffix(")") + "]")
+        "args": json.loads(
+            "[" + invocation[args_index + 1 : -1].removesuffix(")") + "]"
+        ),
     }
 
 
-def parse_response(response: str, response_id: int):
-    return {
-        "status": "SUCCESS",
-        "response_id": response_id,
-        "response": response
-    }
+def parse_response(response: str, id: int) -> CommandResultDict:
+    return {"status": Status.SUCCESS, "id": id, "response": response}
 
 
 def parse_history(
-        history: List[Any],
-        commands: dict[str, CommandConf],
-        tools: dict[str, PluginTool]) -> List[BaseMessage]:
-    init_messages = [
-        SYSTEM_DIALOG_MESSAGE.format(commands=commands, tools=tools),
-        AIMessage(content=json.dumps({"commands": [{"command": SayOrAsk.token(), "args": ["How can I help you?"]}]}))
-    ]
-    response_id = 1
+    history: List[Any],
+    commands_conf: dict[str, CommandConf],
+    tools: dict[str, PluginTool],
+) -> List[BaseMessage]:
+    init_messages = [SYSTEM_DIALOG_MESSAGE.format(commands=commands_conf, tools=tools)]
+    id = 1
+
     for message in history:
         if message["role"] == "assistant":
             parts = message["content"].split("<<<")
@@ -158,39 +158,45 @@ def parse_history(
             assert length % 2 == 1
             if length > 1:
                 i = 0
-                commands = []
-                responses = []
+                commands: List[CommandObject] = []
+                responses: List[CommandResultDict] = []
                 while i < length - 1:
                     text = parts[i].strip()
                     if text.startswith(">>>Run command: "):
                         if responses:
-                            init_messages.append(HumanMessage(content=json.dumps({"responses": responses})))
+                            init_messages.append(
+                                HumanMessage(content=responses_to_text(responses))
+                            )
                             responses = []
 
                         command = parse_command(text.removeprefix(">>>Run command: "))
                         commands.append(command)
                     else:
                         if commands:
-                            init_messages.append(AIMessage(content=json.dumps({"commands": commands})))
+                            init_messages.append(
+                                AIMessage(content=commands_to_text(commands))
+                            )
                             commands = []
 
-                        response = parse_response(text.removeprefix(">>>"), response_id)
+                        response = parse_response(text.removeprefix(">>>"), id)
                         responses.append(response)
                     i += 1
 
                 if responses:
-                    init_messages.append(HumanMessage(content=json.dumps({"responses": responses})))
+                    init_messages.append(
+                        HumanMessage(content=responses_to_text(responses))
+                    )
 
-            command = {
-                "command": "say-or-ask",
-                "args": [parts[-1].strip()]
+            command: CommandObject = {
+                "command": SayOrAsk.token(),
+                "args": [parts[-1].strip()],
             }
-            init_messages.append(AIMessage(content=json.dumps({"commands": [command]})))
+            init_messages.append(AIMessage(content=commands_to_text([command])))
 
         if message["role"] == "user":
-            response = parse_response(message["content"], response_id)
-            init_messages.append(HumanMessage(content=json.dumps({"responses": [response]})))
-            response_id += 1
+            response = parse_response(message["content"], id)
+            init_messages.append(HumanMessage(content=responses_to_text([response])))
+            id += 1
 
     return init_messages
 

@@ -1,7 +1,7 @@
 import importlib
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, List, TypedDict
 
 
 class Command(ABC):
@@ -34,6 +34,15 @@ class Command(ABC):
 
     def __str__(self) -> str:
         return self.print_header()
+
+
+class CommandObject(TypedDict):
+    command: str
+    args: List[str]
+
+
+def commands_to_text(commands: List[CommandObject]) -> str:
+    return json.dumps({"commands": commands})
 
 
 CommandConstructor = Callable[[dict], Command]
