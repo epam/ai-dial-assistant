@@ -1,0 +1,5 @@
+deployment_name: gpt-4
+openai_api_base: https://ai-proxy.epam-rail.com
+# openai_api_version: 2023-03-15-preview
+# openai_api_type: azure
+openai_api_key: !env "PROXY_AZURE_API_KEY"
