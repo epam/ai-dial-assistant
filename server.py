@@ -269,9 +269,9 @@ def parse_history(
 
                     init_messages.append(AIMessage(content=commands_to_text(commands)))
                     init_messages.append(HumanMessage(content=responses_to_text(responses)))
-                    init_messages.append(AIMessage(content=commands_to_text(
-                        [{"command": SayOrAsk.token(), "args": [message["content"]]}]
-                    )))
+            init_messages.append(AIMessage(content=commands_to_text(
+                [{"command": SayOrAsk.token(), "args": [message["content"]]}]
+            )))
 
         if message["role"] == "user":
             response = parse_response(message["content"])
