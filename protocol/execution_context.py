@@ -1,5 +1,5 @@
 import json
-from typing import Dict, List
+from typing import Dict, List, Iterator
 
 from pydantic import BaseModel
 
@@ -23,8 +23,7 @@ class ExecutionContext:
     def __init__(self, command_dict: CommandDict):
         self.command_dict = command_dict
 
-    def _create_command(self, cmd: CommandListElem) -> Command:
-        name = cmd.command
+    def create_command(self, name: str) -> Command:
         available_commands = set(self.command_dict.keys())
 
         if name not in available_commands:
@@ -32,17 +31,11 @@ class ExecutionContext:
                 f"The command '{name}' is expected to be one of {available_commands}"
             )
 
-        return self.command_dict[name](cmd.dict())
+        return self.command_dict[name]()
 
-    def parse_commands(self, command_str: str) -> List[Command]:
-        try:
-            obj = json.loads(command_str)
-        except Exception as e:
-            raise Exception(f"Can't parse the JSON object: {str(e)}")
-
-        try:
-            commands = CommandList.parse_obj(obj).commands
-        except Exception as e:
-            raise Exception(f"Can't parse commands: {str(e)}")
-
-        return list(map(lambda d: self._create_command(d), commands))
+    # def parse_commands(self, commands: any) -> Iterator[Command]:
+    #     try:
+    #         for command in commands["commands"]:
+    #             yield self._create_command(command)
+    #     except Exception as e:
+    #         raise Exception(f"Can't parse commands: {str(e)}")

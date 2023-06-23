@@ -1,29 +1,25 @@
-from typing import Dict
+from typing import Dict, Iterator, List
 
 import wolframalpha
 from typing_extensions import override
 
+from chains.command_chain import ExecutionCallback
 from protocol.commands.base import Command
 
 app_id = "8TJ67Y-PJ8R4338TQ"
 
 
 class WolframAlpha(Command):
-    request: str
-
     @staticmethod
     def token():
         return "wolfram-alpha"
 
-    def __init__(self, dict: Dict):
-        self.dict = dict
-        assert "args" in dict and isinstance(dict["args"], list)
-        assert len(dict["args"]) == 1
-        self.request = dict["args"][0]
-
     @override
-    def execute(self) -> str:
+    def execute(self, args: List[str], execution_callback: ExecutionCallback) -> str:
+        assert len(args) == 1
+        request = args[0]
+
         client = wolframalpha.Client(app_id)
-        resp = client.query(self.request)
+        resp = client.query(request)
 
         return str(resp)

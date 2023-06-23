@@ -1,15 +1,14 @@
-from typing import Dict
+from typing import Dict, List
 
 from typing_extensions import override
 
+from chains.command_chain import ExecutionCallback
 from protocol.commands.base import Command
 from utils.files import get_project_root
 from utils.process import print_exe_result, run_exe
 
 
 class RunPython(Command):
-    source: str
-
     @staticmethod
     def token():
         return "run-python"
@@ -21,11 +20,14 @@ class RunPython(Command):
         self.source = dict["args"][0]
 
     @override
-    def execute(self) -> str:
+    def execute(self, args: List[str], execution_callback: ExecutionCallback) -> str:
+        assert len(args) == 1
+        source = args[0]
+
         cwd = get_project_root() / ".tmp"
         cwd.mkdir(exist_ok=True, parents=True)
 
         source_file = cwd / "source.py"
-        source_file.write_text(self.source)
+        source_file.write_text(source)
 
         return print_exe_result(run_exe("python", [str(source_file)], cwd, trust=True))

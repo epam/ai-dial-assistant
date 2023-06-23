@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from chains.model_client import ModelClient
+from protocol.commands.base import ExecutionCallback
 from utils.init import init
 
 init()
@@ -8,7 +9,7 @@ import os
 import sys
 from pathlib import Path
 
-from chains.command_chain import CommandChain
+from chains.command_chain import CommandChain, ChainCallback, CommandCallback, ArgsCallback, ArgCallback, ResultCallback
 from cli.main_args import parse_args
 from conf.project_conf import (
     CommandConf,
@@ -60,6 +61,81 @@ def collect_plugin(
         )
 
 
+class DummyArgCallback(ArgCallback):
+    def on_arg_start(self):
+        pass
+
+    def on_arg(self, token: str):
+        pass
+
+    def on_arg_end(self):
+        pass
+
+
+class DummyArgsCallback(ArgsCallback):
+    def on_args_start(self):
+        pass
+
+    def arg_callback(self) -> ArgCallback:
+        return DummyArgCallback()
+
+    def on_args_end(self):
+        pass
+
+
+class DummyExecutionCallback(ExecutionCallback):
+
+    def on_message(self, token: str):
+        pass
+
+
+class DummyCommandCallback(CommandCallback):
+
+    def on_command(self, command: str):
+        pass
+
+    def args_callback(self) -> ArgsCallback:
+        return DummyArgsCallback()
+
+    def execution_callback(self) -> ExecutionCallback:
+        return DummyExecutionCallback()
+
+    def on_result(self, response):
+        pass
+
+
+class DummyResultCallback(ResultCallback):
+    def on_start(self):
+        pass
+
+    def on_result(self, token):
+        pass
+
+    def on_end(self):
+        pass
+
+
+class DummyChainCallback(ChainCallback):
+
+    def on_start(self):
+        pass
+
+    def command_callback(self) -> CommandCallback:
+        return DummyCommandCallback()
+
+    def on_end(self, error: str | None = None):
+        pass
+
+    def on_ai_message(self, message: str):
+        pass
+
+    def on_human_message(self, message: str):
+        pass
+
+    def result_callback(self) -> ResultCallback:
+        return DummyResultCallback()
+
+
 def main() -> None:
     # Need to add this so that plugin modules residing at "plugins" folder could be references in index.yaml using relative module paths. Otherwise, we need to prefix all module paths with "plugins."
     sys.path.append(os.path.abspath("plugins"))
@@ -73,7 +149,7 @@ def main() -> None:
     tools: dict[str, PluginTool] = {}
 
     command_dict: CommandDict = {
-        RunPlugin.token(): lambda dict: RunPlugin(None, dict),
+        RunPlugin.token(): RunPlugin,
         SayOrAsk.token(): SayOrAsk,
     }
 
@@ -93,7 +169,7 @@ def main() -> None:
         ctx=ExecutionContext(command_dict),
     )
 
-    chain.run_chat(init_messages)
+    chain.run_chat(init_messages, DummyChainCallback())
 
 
 if __name__ == "__main__":

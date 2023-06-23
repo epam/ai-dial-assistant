@@ -16,14 +16,41 @@ if __name__ == "__main__":
         json={
             "model": "gpt-4-0613",
             "messages": [
-                # {"role": "system", "content": "Do not make up any function arguments if unknown."},
-                {"role": "user", "content": "What is your name?"},
-                # {"role": "start-plugin", "name": "w-f", "query": "What is the weather today in Malaga?"},
-                # {"role": "plugin", "content": "call weather-forecast"},
-                # {"role": "end-plugin", "content": "30C"},
-                # {"role": "assistant", "content": "The weather in Malaga is 30C"},
-                # {"role": "assistant", "content": "To provide the weather forecast, I need to know your location. Could you please tell me where you are?"},
-                # {"role": "user", "content": "Malaga"},
+                {
+                    "role": "user",
+                    "content": "What is the weather tomorrow in London?"
+                },
+                # {
+                #     "role": "assistant",
+                #     "content": "The weather will be rainy.",
+                #     "custom_content": {
+                #         "state": {
+                #             "messages": [
+                #                 {
+                #                     "index": 0,
+                #                     "role": "assistant",
+                #                     "content": ""
+                #                     #
+                #                     #     [
+                #                     #     {
+                #                     #         "index": 0,
+                #                     #         "command": "weather-forecast",
+                #                     #         "args": ["What is the weather tomorrow in London?"],
+                #                     #         "response": {
+                #                     #             "status": "SUCCESS",
+                #                     #             "content": "The weather will be rainy."
+                #                     #         }
+                #                     #     }
+                #                     # ]
+                #                 }
+                #             ]
+                #         }
+                #     }
+                # },
+                # {
+                #     "role": "user",
+                #     "content": "Should I bring an umbrella?"
+                # }
             ],
             "temperature": 0,
             "stream": True,

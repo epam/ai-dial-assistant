@@ -18,7 +18,8 @@ END_TOKEN = "[DONE]"
 
 
 class ChunksCallback(BaseCallbackHandler):
-    queue = Queue[str]()
+    def __init__(self):
+        self._queue = Queue[str]()
 
     @override
     def on_llm_new_token(
@@ -29,7 +30,7 @@ class ChunksCallback(BaseCallbackHandler):
         parent_run_id: Optional[UUID] = None,
         **kwargs: Any,
     ) -> Any:
-        self.queue.put(DATA_PREFIX + token)
+        self._queue.put(DATA_PREFIX + token)
 
     @override
     def on_text(
@@ -40,7 +41,7 @@ class ChunksCallback(BaseCallbackHandler):
         parent_run_id: Optional[UUID] = None,
         **kwargs: Any,
     ) -> Any:
-        self.queue.put(text)
+        self._queue.put(text)
 
     @override
     def on_llm_error(
@@ -51,7 +52,7 @@ class ChunksCallback(BaseCallbackHandler):
         parent_run_id: Optional[UUID] = None,
         **kwargs: Any,
     ) -> Any:
-        self.queue.put(ERROR_PREFIX + str(error))
+        self._queue.put(ERROR_PREFIX + str(error))
 
     @override
     def on_llm_end(
@@ -62,7 +63,7 @@ class ChunksCallback(BaseCallbackHandler):
         parent_run_id: Optional[UUID] = None,
         **kwargs: Any,
     ) -> Any:
-        self.queue.put(END_TOKEN)
+        self._queue.put(END_TOKEN)
 
 
 class ModelClient(ABC):
@@ -100,7 +101,7 @@ class ModelClient(ABC):
         thread.start()
         content = ""
         while True:
-            item = callback.queue.get()
+            item = callback._queue.get()
             if item == END_TOKEN:
                 break
             if item.startswith(ERROR_PREFIX):

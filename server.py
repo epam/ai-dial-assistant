@@ -13,15 +13,17 @@ from flask import Flask, Response, request
 from langchain.schema import AIMessage, BaseMessage, HumanMessage
 from typing_extensions import override
 
-from chains.command_chain import ChainCallback, CommandChain
+from chains.command_chain import ChainCallback, CommandChain, CommandCallback, ArgsCallback, ArgCallback, \
+    ExecutionCallback, ResultCallback
 from chains.model_client import ModelClient
 from cli.main_args import parse_args
 from conf.project_conf import CommandConf, Conf, PluginTool, read_conf
 from llm.base import create_chat_from_conf
 from main import collect_plugin
 from prompts.dialog import RESP_DIALOG_PROMPT, SYSTEM_DIALOG_MESSAGE
-from protocol.command_result import CommandResultDict, Status, responses_to_text
+from protocol.command_result import Status, responses_to_text, CommandResult
 from protocol.commands.base import CommandObject, commands_to_text
+from protocol.commands.end_dialog import EndDialog
 from protocol.commands.run_plugin import RunPlugin
 from protocol.commands.say_or_ask import SayOrAsk
 from protocol.execution_context import CommandDict, ExecutionContext
@@ -29,18 +31,116 @@ from protocol.execution_context import CommandDict, ExecutionContext
 app = Flask(__name__)
 
 
-class ChunkCallback(ChainCallback):
-    queue = Queue[Any]()
+class ServerArgCallback(ArgCallback):
+    def __init__(self, command_index: int, arg_index: int, queue: Queue[Any]):
+        self.command_index = command_index
+        self.arg_index = arg_index
+        self.queue = queue
+
+    def on_arg_start(self):
+        self.queue.put({"custom_content": {"stages": [{"index": self.command_index, "content": '"' if self.arg_index == 0 else ', "'}]}})
+
+    def on_arg(self, token: str):
+        self.queue.put({"custom_content": {"stages": [{"index": self.command_index, "content": token.replace('"', '\\"')}]}})
+
+    def on_arg_end(self):
+        self.queue.put({"custom_content": {"stages": [{"index": self.command_index, "content": '"'}]}})
+
+
+class ServerArgsCallback(ArgsCallback):
+    def __init__(self, command_index: int, queue: Queue[Any]):
+        self.command_index = command_index
+        self.queue = queue
+        self.arg_index = -1
+
+    def on_args_start(self):
+        self.queue.put({"custom_content": {"stages": [{"index": self.command_index, "content": "("}]}})
+
+    def arg_callback(self) -> ArgCallback:
+        self.arg_index += 1
+        return ServerArgCallback(self.command_index, self.arg_index, self.queue)
+
+    def on_args_end(self):
+        self.queue.put({"custom_content": {"stages": [{"index": self.command_index, "content": ")\n"}]}})
+
+
+class ServerExecutionCallback(ExecutionCallback):
+    def __init__(self, command_index: int, queue: Queue[Any]):
+        self.command_index = command_index
+        self.queue = queue
 
     @override
-    def on_message(self, role: str | None = None, text: str | None = None):
-        item = {}
-        if role is not None:
-            item["role"] = role
-        if text is not None:
-            item["content"] = text
+    def on_message(self, token: str):
+        self.queue.put({"custom_content": {"stages": [{"index": self.command_index, "content": token}]}})
 
-        self.queue.put(item)
+
+class ServerCommandCallback(CommandCallback):
+    def __init__(self, command_index: int, queue: Queue[Any]):
+        self.command_index = command_index
+        self.queue = queue
+
+    @override
+    def on_command(self, command: str):
+        self.queue.put(
+            {"custom_content": {"stages": [{"index": self.command_index, "content": "Running command: " + command}]}})
+
+    @override
+    def execution_callback(self) -> ServerExecutionCallback:
+        return ServerExecutionCallback(self.command_index, self.queue)
+
+    @override
+    def args_callback(self) -> ArgsCallback:
+        return ServerArgsCallback(self.command_index, self.queue)
+
+    @override
+    def on_result(self, response):
+        self.queue.put({"custom_content": {"stages": [{"index": self.command_index, "content": f"Result: {response}"}]}})
+
+
+class ServerResultCallback(ResultCallback):
+    def __init__(self, queue: Queue[Any]):
+        self.queue = queue
+
+    def on_start(self):
+        pass
+
+    def on_result(self, token):
+        self.queue.put({"content": token})
+
+    def on_end(self):
+        pass
+
+
+class ServerChainCallback(ChainCallback):
+    def __init__(self):
+        self.command_index: int = -1
+        self.message_index: int = -1
+        self.queue = Queue[Any]()
+
+    @override
+    def on_start(self):
+        self.queue.put({"role": "assistant"})
+
+    @override
+    def command_callback(self) -> CommandCallback:
+        self.command_index += 1
+        return ServerCommandCallback(self.command_index, self.queue)
+
+    @override
+    def on_ai_message(self, message: str):
+        self.message_index += 1
+        self.queue.put(
+            {"custom_content": {"state": [{"index": self.message_index, "role": "assistant", "message": message}]}})
+
+    @override
+    def on_human_message(self, message: str):
+        self.message_index += 1
+        self.queue.put(
+            {"custom_content": {"state": [{"index": self.message_index, "role": "user", "message": message}]}})
+
+    @override
+    def result_callback(self) -> ResultCallback:
+        return ServerResultCallback(self.queue)
 
     @override
     def on_end(self, error: str | None = None):
@@ -59,12 +159,7 @@ def wrap_message(response_id: str, timestamp: float, choice: dict):
                 "id": response_id,
                 "object": "chat.completion",
                 "created": timestamp,
-                "choices": [choice],
-                "usage": {
-                    "prompt_tokens": 9,
-                    "completion_tokens": 12,
-                    "total_tokens": 21,
-                },
+                "choices": [choice]
             }
         )
         + "\n"
@@ -79,11 +174,11 @@ def index():
     commands: dict[str, CommandConf] = {}
     tools: dict[str, PluginTool] = {}
 
-    callback = ChunkCallback()
+    callback = ServerChainCallback()
 
     command_dict: CommandDict = {
-        RunPlugin.token(): lambda dict: RunPlugin(callback, dict),
-        SayOrAsk.token(): SayOrAsk,
+        RunPlugin.token(): RunPlugin,
+        SayOrAsk.token(): EndDialog,
     }
 
     conf = read_conf(Conf, Path("plugins/index.yaml"))
@@ -93,7 +188,10 @@ def index():
     args = parse_args()
     model = create_chat_from_conf(args.openai_conf, args.chat_conf)
 
-    history = parse_history(messages, commands, tools)
+    history = parse_history(messages, [
+        SYSTEM_DIALOG_MESSAGE.format(commands=commands, tools=tools),
+        AIMessage(content=commands_to_text([{"command": SayOrAsk.token(), "args": ["How can I help you?"]}])),
+    ])
     response_id = str(uuid.uuid4())
     timestamp = time.time()
 
@@ -139,64 +237,45 @@ def parse_command(invocation: str) -> CommandObject:
     }
 
 
-def parse_response(response: str, id: int) -> CommandResultDict:
-    return {"status": Status.SUCCESS, "id": id, "response": response}
+def parse_response(response: str) -> CommandResult:
+    return {"status": Status.SUCCESS, "response": response}
+
+
+def sort_by_index(array: List[Any]):
+    return array.sort(key=lambda item: int(item["index"]))
 
 
 def parse_history(
     history: List[Any],
-    commands_conf: dict[str, CommandConf],
-    tools: dict[str, PluginTool],
+    prefix_messages: List[BaseMessage]
 ) -> List[BaseMessage]:
-    init_messages = [SYSTEM_DIALOG_MESSAGE.format(commands=commands_conf, tools=tools)]
-    id = 1
+    init_messages = list(prefix_messages)
 
     for message in history:
         if message["role"] == "assistant":
-            parts = message["content"].split("<<<")
-            length = len(parts)
-            assert length % 2 == 1
-            if length > 1:
-                i = 0
-                commands: List[CommandObject] = []
-                responses: List[CommandResultDict] = []
-                while i < length - 1:
-                    text = parts[i].strip()
-                    if text.startswith(">>>Run command: "):
-                        if responses:
-                            init_messages.append(
-                                HumanMessage(content=responses_to_text(responses))
-                            )
-                            responses = []
+            tools = message.get("custom_content", {}).get("state", [])
+            sort_by_index(tools)
+            if tools:
+                for invocation in tools:
+                    sort_by_index(invocation["invocation"])
+                    commands = list[CommandObject]()
+                    responses = list[CommandResult]()
+                    for command in invocation["invocation"]:
+                        commands.append(
+                            {"command": command["command"], "args": command["args"]})
+                        response = command["response"]
+                        responses.append(
+                            {"status": response["status"], "response": response["content"]})
 
-                        command = parse_command(text.removeprefix(">>>Run command: "))
-                        commands.append(command)
-                    else:
-                        if commands:
-                            init_messages.append(
-                                AIMessage(content=commands_to_text(commands))
-                            )
-                            commands = []
-
-                        response = parse_response(text.removeprefix(">>>"), id)
-                        responses.append(response)
-                    i += 1
-
-                if responses:
-                    init_messages.append(
-                        HumanMessage(content=responses_to_text(responses))
-                    )
-
-            command: CommandObject = {
-                "command": SayOrAsk.token(),
-                "args": [parts[-1].strip()],
-            }
-            init_messages.append(AIMessage(content=commands_to_text([command])))
+                    init_messages.append(AIMessage(content=commands_to_text(commands)))
+                    init_messages.append(HumanMessage(content=responses_to_text(responses)))
+                    init_messages.append(AIMessage(content=commands_to_text(
+                        [{"command": SayOrAsk.token(), "args": [message["content"]]}]
+                    )))
 
         if message["role"] == "user":
-            response = parse_response(message["content"], id)
+            response = parse_response(message["content"])
             init_messages.append(HumanMessage(content=responses_to_text([response])))
-            id += 1
 
     return init_messages
 

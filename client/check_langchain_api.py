@@ -1,7 +1,39 @@
+from queue import Queue
+from typing import Optional, Any
+from uuid import UUID
+
+from langchain.callbacks.base import BaseCallbackHandler
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import AIMessage, HumanMessage
+from typing_extensions import override
 
 from llm.callback import CallbackWithNewLines
+
+
+class ChunksCallback(BaseCallbackHandler):
+
+    @override
+    def on_llm_new_token(
+        self,
+        token: str,
+        *,
+        run_id: UUID,
+        parent_run_id: Optional[UUID] = None,
+        **kwargs: Any,
+    ) -> Any:
+        print(kwargs)
+
+    @override
+    def on_text(
+        self,
+        text: str,
+        *,
+        run_id: UUID,
+        parent_run_id: Optional[UUID] = None,
+        **kwargs: Any,
+    ) -> Any:
+        print(kwargs)
+
 
 if __name__ == "__main__":
     callbacks = [CallbackWithNewLines()]
@@ -39,6 +71,7 @@ Tomorrow's weather in London is expected to be mostly cloudy with occasional lig
                 ),
                 HumanMessage(content="Should I bring an umbrella?"),
             ]
-        ]
+        ],
+        callbacks=[ChunksCallback()],
     )
-    # content = llm_result.generations[0][-1].text
+    content = llm_result.generations[0][-1].text

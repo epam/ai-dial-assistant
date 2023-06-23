@@ -84,10 +84,10 @@ plugins:
   #   type: open-ai-plugin
   #   url: https://www.wolframalpha.com/.well-known/ai-plugin.json
 
-  epam-10k-golden-qna:
-    type: open-ai-plugin
-    url: http://localhost:5003/.well-known/ai-plugin.json
-
-  epam-10k-semantic-search:
-    type: open-ai-plugin
-    url: http://localhost:5004/.well-known/ai-plugin.json
+#  epam-10k-golden-qna:
+#    type: open-ai-plugin
+#    url: http://localhost:5003/.well-known/ai-plugin.json
+#
+#  epam-10k-semantic-search:
+#    type: open-ai-plugin
+#    url: http://localhost:5004/.well-known/ai-plugin.json

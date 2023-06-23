@@ -1,30 +1,25 @@
 import sys
-from typing import Dict
+from typing import Dict, Any, List
 
 from typing_extensions import override
 
+from chains.command_chain import ExecutionCallback
 from protocol.commands.base import Command
 from utils.files import get_project_root
 from utils.process import print_exe_result, run_exe
 
 
 class WeatherForecast(Command):
-    location: str
-    date: str
-
     @staticmethod
     def token():
         return "weather-forecast"
 
-    def __init__(self, dict: Dict):
-        self.dict = dict
-        assert "args" in dict and isinstance(dict["args"], list)
-        assert len(dict["args"]) == 2
-        self.location = dict["args"][0]
-        self.date = dict["args"][1]
-
     @override
-    def execute(self) -> str:
+    def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> str:
+        assert len(args) == 2
+        location = args[0]
+        date = args[1]
+
         cwd = get_project_root()
         script = cwd / "tools" / "get_weather_report.py"
 
@@ -34,7 +29,7 @@ class WeatherForecast(Command):
         return print_exe_result(
             run_exe(
                 sys.executable,
-                [str(script), "--date", self.date, "--location", self.location],
+                [str(script), "--date", date, "--location", location],
                 cwd,
                 trust=True,
             )

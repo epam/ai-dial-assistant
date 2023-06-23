@@ -1,25 +1,22 @@
-from typing import Dict
+from typing import List
 
 from typing_extensions import override
 
+from chains.command_chain import ExecutionCallback
 from protocol.commands.base import Command
 from utils.printing import print_red
 from utils.text import indent
 
 
 class SayOrAsk(Command):
-    message: str
-
     @staticmethod
     def token():
         return "say-or-ask"
 
-    def __init__(self, dict: Dict):
-        self.dict = dict
-        assert "args" in dict and len(dict["args"]) == 1
-        self.message = dict["args"][0]
-
     @override
-    def execute(self) -> str:
-        print_red(indent(self.message, 0, ">"))
+    def execute(self, args: List[str], execution_callback: ExecutionCallback) -> str:
+        assert len(args) == 1
+        message = args[0]
+
+        print_red(indent(message, 0, ">"))
         return input()

@@ -1,12 +1,13 @@
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Tuple, List
 from urllib.parse import urlparse
 
 from jinja2 import Template
 from langchain.tools import APIOperation
 from typing_extensions import override
 
-from chains.command_chain import ChainCallback, CommandChain
+from chains.command_chain import ChainCallback, CommandChain, CommandCallback, ArgsCallback, \
+    ArgCallback, ResultCallback
 from chains.model_client import ModelClient
 from cli.main_args import parse_args
 from conf.project_conf import (
@@ -19,20 +20,14 @@ from conf.project_conf import (
 )
 from llm.base import create_chat_from_conf
 from open_api.operation_selector import (
-    OpenAPIClarification,
     collect_operations,
-    select_open_api_operation,
 )
-from open_api.requester import OpenAPIEndpointRequester
-from open_api.response_summarisarion import summarize_response
-from plugins.http_request import HttpRequest
 from prompts.dialog import (
     PLUGIN_SYSTEM_DIALOG_MESSAGE,
     RESP_DIALOG_PROMPT,
-    open_ai_plugin_template,
     open_api_plugin_template,
 )
-from protocol.commands.base import Command
+from protocol.commands.base import Command, ExecutionCallback
 from protocol.commands.end_dialog import EndDialog
 from protocol.commands.open_api import OpenAPIChatCommand
 from protocol.execution_context import CommandDict, ExecutionContext
@@ -46,47 +41,140 @@ def get_base_url(url: str) -> str:
     return base_url
 
 
-class RunPlugin(Command):
-    callback: ChainCallback | None
-    name: str
-    query: str
+class PluginArgCallback(ArgCallback):
+    def __init__(self, arg_index: int, callback: ExecutionCallback):
+        self.arg_index = arg_index
+        self.callback = callback
 
+    @override
+    def on_arg_start(self):
+        self.callback.on_message('"' if self.arg_index == 0 else ', "')
+
+    @override
+    def on_arg(self, token: str):
+        self.callback.on_message(token.replace('"', '\\"'))
+
+    @override
+    def on_arg_end(self):
+        self.callback.on_message('"')
+
+
+class PluginArgsCallback(ArgsCallback):
+    def __init__(self, callback: ExecutionCallback):
+        self.execution_callback = callback
+        self.arg_index = -1
+
+    @override
+    def on_args_start(self):
+        self.execution_callback.on_message("(")
+
+    @override
+    def arg_callback(self) -> ArgCallback:
+        self.arg_index += 1
+        return PluginArgCallback(self.arg_index, self.execution_callback)
+
+    @override
+    def on_args_end(self):
+        self.execution_callback.on_message(")\n")
+
+
+class PluginCommandCallback(CommandCallback):
+    def __init__(self, callback: ExecutionCallback):
+        self.callback = callback
+
+    @override
+    def on_command(self, command: str):
+        self.callback.on_message(f">>> {command}")
+
+    @override
+    def args_callback(self) -> ArgsCallback:
+        return PluginArgsCallback(self.callback)
+
+    @override
+    def execution_callback(self) -> ExecutionCallback:
+        return self.callback
+
+    @override
+    def on_result(self, response):
+        self.callback.on_message(f"<<< {response}\n")
+
+
+class PluginResultCallback(ResultCallback):
+    def __init__(self, callback: ExecutionCallback):
+        self.callback = callback
+
+    def on_start(self):
+        pass
+
+    def on_result(self, token):
+        self.callback.on_message(token)
+
+    def on_end(self):
+        self.callback.on_message("\n")
+
+
+class PluginChainCallback(ChainCallback):
+    def __init__(self, callback: ExecutionCallback):
+        self.callback = callback
+
+    @override
+    def on_start(self):
+        pass
+
+    @override
+    def command_callback(self) -> PluginCommandCallback:
+        return PluginCommandCallback(self.callback)
+
+    @override
+    def on_end(self, error: str | None = None):
+        pass
+
+    @override
+    def on_ai_message(self, message: str):
+        pass
+
+    @override
+    def on_human_message(self, message: str):
+        pass
+
+    @override
+    def result_callback(self) -> ResultCallback:
+        return PluginResultCallback(self.callback)
+
+
+class RunPlugin(Command):
     @staticmethod
     def token():
         return "run-plugin"
 
-    def __init__(self, callback: ChainCallback | None, dict: Dict):
-        self.dict = dict
-        assert "args" in dict and isinstance(dict["args"], list)
-        assert len(dict["args"]) == 2
-        self.name = dict["args"][0]
-        self.query = dict["args"][1]
-        self.callback = callback
-
     @override
-    def execute(self) -> str:
+    def execute(self, args: List[str], execution_callback: ExecutionCallback) -> str:
+        assert len(args) == 2
+        name = args[0]
+        query = args[1]
+
         conf = read_conf(Conf, Path("plugins") / "index.yaml")
 
-        if self.name not in conf.plugins:
+        if name not in conf.plugins:
             raise ValueError(
-                f"Unknown plugin: {self.name}. Available plugins: {conf.plugins.keys()}"
+                f"Unknown plugin: {name}. Available plugins: {conf.plugins.keys()}"
             )
 
-        plugin = conf.plugins[self.name]
+        plugin = conf.plugins[name]
 
         if isinstance(plugin, PluginCommand):
-            raise ValueError(f"Command isn't a plugin: {self.name}")
+            raise ValueError(f"Command isn't a plugin: {name}")
 
         if isinstance(plugin, PluginTool):
             system_prefix, commands = self._process_plugin_tool(conf, plugin)
-            return self._run_plugin(system_prefix, commands)
+            return self._run_plugin(name, query, system_prefix, commands, execution_callback)
 
-        elif isinstance(plugin, PluginOpenAI):
+        if isinstance(plugin, PluginOpenAI):
             # 1. Using plugin prompt approach + abbreviated endpoints
-            system_prefix, commands = self._process_plugin_open_ai_typescript_commands(
+            system_prefix, commands = RunPlugin._process_plugin_open_ai_typescript_commands(
                 plugin
             )
-            return self._run_plugin(system_prefix, commands)
+            return self._run_plugin(name, query, system_prefix, commands, execution_callback)
 
             # 2. Using custom prompt borrowed from LangChain
             # return self._process_plugin_open_ai_typescript(plugin)
@@ -97,9 +185,8 @@ class RunPlugin(Command):
 
         raise ValueError(f"Unknown plugin type: {plugin}")
 
-    def _process_plugin_open_ai_typescript_commands(
-        self, plugin: PluginOpenAI
-    ) -> Tuple[str, dict[str, CommandConf]]:
+    @staticmethod
+    def _process_plugin_open_ai_typescript_commands(plugin: PluginOpenAI) -> Tuple[str, dict[str, CommandConf]]:
         info = get_open_ai_plugin_info(plugin.url)
         spec = info.open_api
         api_description = info.ai_plugin.description_for_model
@@ -112,7 +199,7 @@ class RunPlugin(Command):
         )
 
         def create_command(op: APIOperation):
-            return lambda d: OpenAPIChatCommand(op, d)
+            return lambda: OpenAPIChatCommand(op)
 
         commands: dict[str, CommandConf] = {}
         for name, op in ops.items():
@@ -125,38 +212,6 @@ class RunPlugin(Command):
 
         return system_prefix, commands
 
-    def _process_plugin_open_ai_typescript(self, plugin: PluginOpenAI) -> str:
-        info = get_open_ai_plugin_info(plugin.url)
-        spec = info.open_api
-        api_description = info.ai_plugin.description_for_model
-
-        ops = collect_operations(spec)
-        resp = select_open_api_operation(api_description, ops, self.query)
-        if isinstance(resp, OpenAPIClarification):
-            return resp.user_question
-
-        api_response = OpenAPIEndpointRequester(ops[resp.command]).execute(resp.args)
-        summary = summarize_response(api_response, self.query)
-        return summary
-
-    def _process_plugin_open_ai_json(
-        self, conf: Conf, plugin: PluginOpenAI
-    ) -> Tuple[str, dict[str, CommandConf]]:
-        name = HttpRequest.token()
-        commands: dict[str, CommandConf] = {name: conf.commands[name]}
-
-        info = get_open_ai_plugin_info(plugin.url)
-
-        open_api = info.open_api.json()
-        description_for_model = info.ai_plugin.description_for_model
-        url = get_base_url(info.ai_plugin.api.url)
-
-        system_prefix = plugin.system_prefix + Template(open_ai_plugin_template).render(
-            description_for_model=description_for_model,
-            url=url,
-            open_api=open_api,
-        )
-        return system_prefix, commands
 
     def _process_plugin_tool(
         self, conf: Conf, plugin: PluginTool
@@ -174,9 +229,12 @@ class RunPlugin(Command):
         return system_prefix, commands
 
     def _run_plugin(
-        self,
-        system_prefix: str,
-        commands: dict[str, CommandConf],
+            self,
+            name: str,
+            query: str,
+            system_prefix: str,
+            commands: dict[str, CommandConf],
+            execution_callback: ExecutionCallback,
     ) -> str:
         command_dict: CommandDict = {EndDialog.token(): EndDialog}
 
@@ -187,7 +245,7 @@ class RunPlugin(Command):
             PLUGIN_SYSTEM_DIALOG_MESSAGE.format(
                 commands=commands,
                 system_prefix=system_prefix,
-                query=self.query,
+                query=query,
             )
         ]
 
@@ -196,13 +254,13 @@ class RunPlugin(Command):
 
         chat = CommandChain(
             model_client=ModelClient(model=model),
-            name="PLUGIN:" + self.name,
+            name="PLUGIN:" + name,
             resp_prompt=RESP_DIALOG_PROMPT,
             ctx=ExecutionContext(command_dict),
         )
 
         try:
-            return chat.run_chat(init_messages, self.callback)
+            return chat.run_chat(init_messages, PluginChainCallback(execution_callback))
         except Exception as e:
             print_exception()
             return "ERROR: " + str(e)

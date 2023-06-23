@@ -1,102 +1,113 @@
-import json
-import re
+import threading
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Iterable, Iterator
 
 from langchain.prompts.chat import HumanMessagePromptTemplate
 from langchain.schema import AIMessage, BaseMessage
 
+from chains.json_object import JsonObject, Tokenator
 from chains.model_client import ModelClient
-from protocol.command_result import (
-    CommandResultDict,
-    Status,
-    execute_command,
-    responses_to_text,
-)
-from protocol.commands.end_dialog import EndDialog
-from protocol.commands.say_or_ask import SayOrAsk
+from protocol.command_result import responses_to_text, execute_command, Status, CommandResult
+from protocol.commands.base import FinalCommand, ExecutionCallback
 from protocol.execution_context import ExecutionContext
-from utils.printing import print_base_message, print_exception
+from utils.printing import print_base_message
+
+
+class ArgCallback(ABC):
+    @abstractmethod
+    def on_arg_start(self):
+        pass
+
+    @abstractmethod
+    def on_arg(self, token: str):
+        pass
+
+    @abstractmethod
+    def on_arg_end(self):
+        pass
+
+
+class ArgsCallback(ABC):
+    @abstractmethod
+    def on_args_start(self):
+        pass
+
+    @abstractmethod
+    def arg_callback(self) -> ArgCallback:
+        pass
+
+    @abstractmethod
+    def on_args_end(self):
+        pass
+
+
+class CommandCallback(ABC):
+    @abstractmethod
+    def on_command(self, command: str):
+        pass
+
+    @abstractmethod
+    def args_callback(self) -> ArgsCallback:
+        pass
+
+    @abstractmethod
+    def execution_callback(self) -> ExecutionCallback:
+        pass
+
+    @abstractmethod
+    def on_result(self, response):
+        pass
+
+
+class ResultCallback(ABC):
+    @abstractmethod
+    def on_start(self):
+        pass
+
+    @abstractmethod
+    def on_result(self, token):
+        pass
+
+    @abstractmethod
+    def on_end(self):
+        pass
 
 
 class ChainCallback(ABC):
     @abstractmethod
-    def on_message(self, role: str | None = None, text: str | None = None):
+    def on_start(self):
+        pass
+
+    @abstractmethod
+    def command_callback(self) -> CommandCallback:
         pass
 
     @abstractmethod
     def on_end(self, error: str | None = None):
         pass
 
+    @abstractmethod
+    def on_ai_message(self, message: str):
+        pass
 
-class MessagePublisher:
-    invocation: str = ""
-    started = False
-    say_or_ask = False
-    another_command = False
-    position = 0
+    @abstractmethod
+    def on_human_message(self, message: str):
+        pass
 
-    def __init__(self, callback: ChainCallback | None):
-        self.callback = callback
+    @abstractmethod
+    def result_callback(self) -> ResultCallback:
+        pass
 
-    def stream_message_if_need(self, token: str):
-        self.invocation += token
 
-        if self.callback is None:
-            return
+class BufferedIterator(Iterator[str]):
+    def __init__(self, stream: Iterator[str]):
+        self.stream = stream
+        self.buffer = ""
 
-        if (
-            self.say_or_ask
-            or f'"{SayOrAsk.token()}"' in self.invocation[self.position :]
-        ):
-            if not self.say_or_ask:
-                self.say_or_ask = True
-            if not self.started:
-                match = re.search(
-                    r'"args"\s*:\s*\[\s*"(?P<message>(?:[^"]|\\.)*)$',
-                    self.invocation[self.position :],
-                )
-                if match:
-                    self.callback.on_message(text=match.group("message"))
-                    self.started = True
-            else:
-                match = re.search(r'^(?P<message>([^"]|\\.)*)', token)
-                if match:
-                    message = match.group("message")
-                    self.callback.on_message(text=message)
-                    if len(message) < len(token):
-                        self.started = False
-                        self.position = len(self.invocation) - len(token) + len(message)
-        else:
-            if not self.another_command:
-                match = re.search(
-                    r'"command"\s*:\s*"(?P<command>[^"]+)"',
-                    self.invocation[self.position :],
-                )
-                if match:
-                    self.callback.on_message(
-                        text=">>>COMMAND:" + match.group("command") + "("
-                    )
-                    self.another_command = True
-
-            if not self.started:
-                match = re.search(
-                    r'"args"\s*:\s*\[\s*(?P<message>[^]]*)$',
-                    self.invocation[self.position :],
-                )
-                if match:
-                    self.callback.on_message(text=match.group("message"))
-                    self.started = True
-            else:
-                match = re.search(r"^(?P<message>[^]]*)", token)
-                if match:
-                    message = match.group("message")
-                    self.callback.on_message(text=message)
-                    if len(message) < len(token):
-                        self.started = False
-                        self.callback.on_message(text=")<<<\n")
-                        self.position = len(self.invocation) - len(token) + len(message)
-                        self.another_command = False
+    def __next__(self) -> str:
+        chunk = next(self.stream)
+        self.buffer += chunk
+        return chunk
 
 
 class InvocationResult:
@@ -106,8 +117,6 @@ class InvocationResult:
 
 
 class CommandChain:
-    response_id: int
-
     def __init__(
         self,
         name: str,
@@ -118,7 +127,6 @@ class CommandChain:
         self.model_client = model_client
         self.ctx = ctx
         self.resp_prompt = resp_prompt
-        self.response_id = 1
         self.name = name
 
     def _session_prefix(self) -> str:
@@ -130,81 +138,76 @@ class CommandChain:
         print_base_message(prefix_message, end="")
 
     def run_chat(
-        self, history: List[BaseMessage], callback: ChainCallback | None = None
+        self, history: List[BaseMessage], callback: ChainCallback
     ) -> str:
         for message in history:
             self._print_session_prefix(message)
             print_base_message(message)
 
-        callback.on_message(role="assistant") if callback else None
+        callback.on_start()
         while True:
-            stream = self.model_client.stream(history)
-            publisher = MessagePublisher(callback)
+            token_stream = BufferedIterator(map(lambda m: m.content, self.model_client.stream(history)))
+            json_object = JsonObject()
+            thread = threading.Thread(target=json_object.parse, args=[Tokenator(token_stream)])
+            thread.start()
             self._print_session_prefix(AIMessage(content=""))
-            for token in stream:
-                publisher.stream_message_if_need(token.content)
 
-            invocation = AIMessage(content=publisher.invocation)
-            history.append(invocation)
+            responses: List[CommandResult] = []
+            invocations = json_object["commands"]
+            for invocation in invocations:
+                command_name = ''.join(invocation["command"])
+                try:
+                    command = self.ctx.create_command(command_name)
+                    args = invocation["args"]
+                    if isinstance(command, FinalCommand):
+                        result = CommandChain._to_result(next(args), callback.result_callback())
+                        callback.on_end()
+                        return result
+                    else:
+                        command_callback = callback.command_callback()
+                        command_callback.on_command(command_name)
+                        response = execute_command(
+                            command,
+                            list(CommandChain._to_args(args, command_callback)),
+                            command_callback.execution_callback())
+                        command_callback.on_result(response["status"] + ": " + response["response"])
+                        responses.append(response)
+                except Exception as e:
+                    responses.append({"status": Status.ERROR, "response": str(e)})
 
-            result = self._execute_commands(invocation.content, callback)
-            message = self.resp_prompt.format(responses=result.content)
+            thread.join()
 
-            self._print_session_prefix(message)
-            print_base_message(message)
-            history.append(message)
+            callback.on_ai_message(token_stream.buffer)
+            history.append(AIMessage(content=token_stream.buffer))
 
-            if result.final_response is not None:
-                return result.final_response
+            response_text = self.resp_prompt.format(responses=responses_to_text(responses))
+            self._print_session_prefix(response_text)
+            print_base_message(response_text)
+            callback.on_human_message(response_text.content)
+            history.append(response_text)
 
-    def _execute_commands(
-        self, invocation: str, callback: ChainCallback | None
-    ) -> InvocationResult:
-        responses: List[CommandResultDict] = []
-        final_response: str | None = None
+    @staticmethod
+    def _to_args(args: Iterable[Iterable[str]], callback: CommandCallback) -> Iterable[str]:
+        args_callback = callback.args_callback()
+        args_callback.on_args_start()
+        for arg in args:
+            arg_callback = args_callback.arg_callback()
+            arg_callback.on_arg_start()
+            result = ""
+            for token in arg:
+                arg_callback.on_arg(token)
+                result += token
+            arg_callback.on_arg_end()
+            yield result
+        args_callback.on_args_end()
 
-        try:
-            commands = self.ctx.parse_commands(invocation)
-            for command in commands:
-                self.response_id += 1
+    @staticmethod
+    def _to_result(arg: Iterable[str], callback: ResultCallback) -> str:
+        result = ""
+        callback.on_start()
+        for token in arg:
+            callback.on_result(token)
+            result += token
+        callback.on_end()
+        return result
 
-                if isinstance(command, EndDialog):
-                    final_response = command.response
-                    response = CommandResultDict(
-                        id=self.response_id,
-                        status=Status.SUCCESS,
-                        response=final_response,
-                    )
-                    responses.append(response)
-
-                elif isinstance(command, SayOrAsk):
-                    # It's the last message in the main session
-                    final_response = "[DONE]"
-                    response = CommandResultDict(
-                        id=self.response_id,
-                        status=Status.SUCCESS,
-                        response=final_response,
-                    )
-                    responses.append(response)
-                    callback.on_end() if callback else None
-
-                else:
-                    response = execute_command(command, self.response_id).to_dict()
-                    responses.append(response)
-
-                    text = ">>>RESPONSE:" + json.dumps(response["response"]) + "<<<\n"
-                    callback.on_message(text=text) if callback else None
-
-        except Exception as e:
-            print_exception()
-            final_response = None
-            text = ">>>ERROR:" + str(e) + "<<<\n"
-            callback.on_message(text=text) if callback else None
-            responses = [
-                CommandResultDict(
-                    id=self.response_id, status=Status.ERROR, response=str(e)
-                )
-            ]
-            self.response_id += 1
-
-        return InvocationResult(responses_to_text(responses), final_response)
