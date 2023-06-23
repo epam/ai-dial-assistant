@@ -61,8 +61,8 @@ if __name__ == "__main__":
         temperature=0,
         stream=True,
     )
-    total_response = []
+    total_response = [{}]
     for chunk in response:
         os.system('cls')
-        print(json.dumps(total_response, indent=4).replace('\\n', '\n'))
+        print(json.dumps(total_response[0], indent=4).replace('\\n', '\n'))
         total_response = merge(total_response, chunk.to_dict_recursive()["choices"])
