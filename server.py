@@ -255,20 +255,10 @@ def parse_history(
         if message["role"] == "assistant":
             tools = message.get("custom_content", {}).get("state", [])
             sort_by_index(tools)
-            if tools:
-                for invocation in tools:
-                    sort_by_index(invocation["invocation"])
-                    commands = list[CommandObject]()
-                    responses = list[CommandResult]()
-                    for command in invocation["invocation"]:
-                        commands.append(
-                            {"command": command["command"], "args": command["args"]})
-                        response = command["response"]
-                        responses.append(
-                            {"status": response["status"], "response": response["content"]})
-
-                    init_messages.append(AIMessage(content=commands_to_text(commands)))
-                    init_messages.append(HumanMessage(content=responses_to_text(responses)))
+            for invocation in tools:
+                content = invocation["message"]
+                init_messages.append(
+                    AIMessage(content=content) if invocation["role"] == "assistant" else HumanMessage(content=content))
             init_messages.append(AIMessage(content=commands_to_text(
                 [{"command": SayOrAsk.token(), "args": [message["content"]]}]
             )))
