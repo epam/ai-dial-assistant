@@ -1,15 +1,16 @@
 import importlib
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Callable, List, TypedDict
+from typing import Any, List, TypedDict, Callable
 
 from typing_extensions import override
 
 
-class ExecutionCallback(ABC):
-    @abstractmethod
-    def on_message(self, token: str):
-        pass
+class ExecutionCallback:
+    """Callback for reporting execution"""
+
+    async def __call__(self, token: str):
+        """Called when a command is executed"""
 
 
 class Command(ABC):
@@ -18,7 +19,7 @@ class Command(ABC):
     def token() -> str:
         pass
 
-    def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> Any:
+    async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> Any:
         raise Exception(f"Command {self} isn't implemented")
 
     def __str__(self) -> str:
@@ -27,7 +28,7 @@ class Command(ABC):
 
 class FinalCommand(Command, ABC):
     @override
-    def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> Any:
+    async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> Any:
         raise Exception(f"Internal error: command {self} is final and can't be executed")
 
 

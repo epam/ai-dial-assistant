@@ -2,8 +2,7 @@ from typing import Dict, List
 
 from typing_extensions import override
 
-from chains.command_chain import ExecutionCallback
-from protocol.commands.base import Command
+from protocol.commands.base import Command, ExecutionCallback
 from utils.files import get_project_root
 from utils.process import print_exe_result, run_exe
 
@@ -20,7 +19,7 @@ class RunPython(Command):
         self.source = dict["args"][0]
 
     @override
-    def execute(self, args: List[str], execution_callback: ExecutionCallback) -> str:
+    async def execute(self, args: List[str], execution_callback: ExecutionCallback) -> str:
         assert len(args) == 1
         source = args[0]
 

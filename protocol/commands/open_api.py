@@ -4,9 +4,8 @@ from typing_extensions import override
 
 from langchain.tools.openapi.utils.api_models import APIOperation
 
-from chains.command_chain import ExecutionCallback
 from open_api.requester import OpenAPIEndpointRequester
-from protocol.commands.base import Command
+from protocol.commands.base import Command, ExecutionCallback
 
 
 class OpenAPIChatCommand(Command):
@@ -20,7 +19,7 @@ class OpenAPIChatCommand(Command):
         self.op = op
 
     @override
-    def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> dict:
+    async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> dict:
         assert len(args) == 1
 
         return OpenAPIEndpointRequester(self.op).execute(args[0])

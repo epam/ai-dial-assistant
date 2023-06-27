@@ -1,6 +1,6 @@
 model_name: gpt-4-0314
 temperature: 0.0
-request_timeout: 10
+request_timeout: 120
 openai_log_level: info
 openai_api_key: !env "OPENAI_API_KEY"
 # azure: !include "deltix_azure.yaml"

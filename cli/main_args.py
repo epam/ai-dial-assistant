@@ -20,19 +20,19 @@ def add_yaml_conf(parser: argparse.ArgumentParser, name: str, default: str, help
     )
 
 
-def parse_args() -> Args:
+def parse_args(root_path: str = ".") -> Args:
     parser = argparse.ArgumentParser()
 
     add_yaml_conf(
         parser,
         "--chat-conf",
-        default="./configs/chat.yaml",
+        default=f"{root_path}/configs/chat.yaml",
         help="Path to chat configuration file",
     )
     add_yaml_conf(
         parser,
         "--openai-conf",
-        default="./configs/open_ai.yaml",
+        default=f"{root_path}/configs/open_ai.yaml",
         help=f"Path to OpenIA configuration file",
     )
 

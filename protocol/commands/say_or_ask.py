@@ -2,8 +2,7 @@ from typing import List
 
 from typing_extensions import override
 
-from chains.command_chain import ExecutionCallback
-from protocol.commands.base import Command
+from protocol.commands.base import Command, ExecutionCallback
 from utils.printing import print_red
 from utils.text import indent
 
@@ -14,7 +13,7 @@ class SayOrAsk(Command):
         return "say-or-ask"
 
     @override
-    def execute(self, args: List[str], execution_callback: ExecutionCallback) -> str:
+    async def execute(self, args: List[str], execution_callback: ExecutionCallback) -> str:
         assert len(args) == 1
         message = args[0]
 

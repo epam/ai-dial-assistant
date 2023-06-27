@@ -1,119 +1,36 @@
-import threading
-from abc import ABC, abstractmethod
-from typing import List, Iterable, Iterator
+import json
+import traceback
+from typing import List, Iterable, AsyncIterator, Any
 
 from langchain.prompts.chat import HumanMessagePromptTemplate
-from langchain.schema import AIMessage, BaseMessage
+from langchain.schema import AIMessage, BaseMessage, HumanMessage
 
-from chains.json_object import JsonObject, Tokenator
+from chains.callbacks.chain_callback import ChainCallback
+from chains.callbacks.command_callback import CommandCallback
+from chains.callbacks.result_callback import ResultCallback
+from chains.json_stream.json_node import JsonNode
+from chains.json_stream.json_parser import JsonParser, object_node, array_node, string_node
+from chains.json_stream.tokenator import Tokenator
 from chains.model_client import ModelClient
 from protocol.command_result import responses_to_text, execute_command, Status, CommandResult
-from protocol.commands.base import FinalCommand, ExecutionCallback
+from protocol.commands.base import FinalCommand
 from protocol.execution_context import ExecutionContext
 from utils.printing import print_base_message
+from utils.text import join_string
 
 
-class ArgCallback(ABC):
-    @abstractmethod
-    def on_arg_start(self):
-        pass
-
-    @abstractmethod
-    def on_arg(self, token: str):
-        pass
-
-    @abstractmethod
-    def on_arg_end(self):
-        pass
-
-
-class ArgsCallback(ABC):
-    @abstractmethod
-    def on_args_start(self):
-        pass
-
-    @abstractmethod
-    def arg_callback(self) -> ArgCallback:
-        pass
-
-    @abstractmethod
-    def on_args_end(self):
-        pass
-
-
-class CommandCallback(ABC):
-    @abstractmethod
-    def on_command(self, command: str):
-        pass
-
-    @abstractmethod
-    def args_callback(self) -> ArgsCallback:
-        pass
-
-    @abstractmethod
-    def execution_callback(self) -> ExecutionCallback:
-        pass
-
-    @abstractmethod
-    def on_result(self, response):
-        pass
-
-
-class ResultCallback(ABC):
-    @abstractmethod
-    def on_start(self):
-        pass
-
-    @abstractmethod
-    def on_result(self, token):
-        pass
-
-    @abstractmethod
-    def on_end(self):
-        pass
-
-
-class ChainCallback(ABC):
-    @abstractmethod
-    def on_start(self):
-        pass
-
-    @abstractmethod
-    def command_callback(self) -> CommandCallback:
-        pass
-
-    @abstractmethod
-    def on_end(self, error: str | None = None):
-        pass
-
-    @abstractmethod
-    def on_ai_message(self, message: str):
-        pass
-
-    @abstractmethod
-    def on_human_message(self, message: str):
-        pass
-
-    @abstractmethod
-    def result_callback(self) -> ResultCallback:
-        pass
-
-
-class BufferedIterator(Iterator[str]):
-    def __init__(self, stream: Iterator[str]):
+class TextCollector(AsyncIterator[str]):
+    def __init__(self, stream: AsyncIterator[str]):
         self.stream = stream
         self.buffer = ""
 
-    def __next__(self) -> str:
-        chunk = next(self.stream)
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> str:
+        chunk = await anext(self.stream)
         self.buffer += chunk
         return chunk
-
-
-class InvocationResult:
-    def __init__(self, content: str, final_response: str | None):
-        self.content = content
-        self.final_response = final_response
 
 
 class CommandChain:
@@ -137,77 +54,82 @@ class CommandChain:
         prefix_message.content = self._session_prefix()
         print_base_message(prefix_message, end="")
 
-    def run_chat(
-        self, history: List[BaseMessage], callback: ChainCallback
-    ) -> str:
+    async def run_chat(self, history: List[BaseMessage], callback: ChainCallback) -> str:
         for message in history:
             self._print_session_prefix(message)
             print_base_message(message)
 
-        callback.on_start()
+        await callback.on_start()
         while True:
-            token_stream = BufferedIterator(map(lambda m: m.content, self.model_client.stream(history)))
-            json_object = JsonObject()
-            thread = threading.Thread(target=json_object.parse, args=[Tokenator(token_stream)])
-            thread.start()
             self._print_session_prefix(AIMessage(content=""))
+            token_stream = TextCollector(self.model_client.agenerate(history))
 
-            responses: List[CommandResult] = []
-            invocations = json_object["commands"]
-            for invocation in invocations:
-                command_name = ''.join(invocation["command"])
-                try:
+            try:
+                responses: List[CommandResult] = []
+                parsing_content = await JsonParser.parse(Tokenator(token_stream))
+                invocations = await object_node(parsing_content.node).get("commands")
+                async for invocation in array_node(invocations):
+                    invocation_object = object_node(invocation)
+                    command_name = await join_string(string_node(await invocation_object.get("command")))
                     command = self.ctx.create_command(command_name)
-                    args = invocation["args"]
+                    args = array_node(await invocation_object.get("args"))
                     if isinstance(command, FinalCommand):
-                        result = CommandChain._to_result(next(args), callback.result_callback())
-                        callback.on_end()
+                        arg = await anext(args)
+                        result = await CommandChain._to_result(string_node(arg), callback.result_callback())
+                        await callback.on_end()
                         return result
                     else:
                         command_callback = callback.command_callback()
-                        command_callback.on_command(command_name)
-                        response = execute_command(
+                        await command_callback.on_command(command_name)
+                        response = await execute_command(
                             command,
-                            list(CommandChain._to_args(args, command_callback)),
+                            [arg async for arg in CommandChain._to_args(args, command_callback)],
                             command_callback.execution_callback())
-                        command_callback.on_result(response["status"] + ": " + response["response"])
+                        await command_callback.on_result(response["response"])
                         responses.append(response)
-                except Exception as e:
-                    responses.append({"status": Status.ERROR, "response": str(e)})
 
-            thread.join()
+                await parsing_content.finish_parsing()
 
-            callback.on_ai_message(token_stream.buffer)
-            history.append(AIMessage(content=token_stream.buffer))
+                await callback.on_ai_message(token_stream.buffer)
+                history.append(AIMessage(content=token_stream.buffer))
 
-            response_text = self.resp_prompt.format(responses=responses_to_text(responses))
-            self._print_session_prefix(response_text)
-            print_base_message(response_text)
-            callback.on_human_message(response_text.content)
-            history.append(response_text)
+                response_text = responses_to_text(responses)
+                response = self.resp_prompt.format(responses=response_text)
+                self._print_session_prefix(response)
+                print_base_message(response)
+                await callback.on_human_message(response_text)
+                history.append(response)
+            except Exception as e:
+                traceback.print_exc()
+                await callback.on_error(e)
+                history.append(AIMessage(content=token_stream.buffer))
+
+                response = self.resp_prompt.format(responses=json.dumps({"error": str(e)}))
+                self._print_session_prefix(response)
+                print_base_message(response)
+                history.append(response)
 
     @staticmethod
-    def _to_args(args: Iterable[Iterable[str]], callback: CommandCallback) -> Iterable[str]:
+    async def _to_args(args: AsyncIterator[JsonNode], callback: CommandCallback) -> AsyncIterator[str]:
         args_callback = callback.args_callback()
-        args_callback.on_args_start()
-        for arg in args:
+        await args_callback.on_args_start()
+        async for arg in args:
             arg_callback = args_callback.arg_callback()
-            arg_callback.on_arg_start()
+            await arg_callback.on_arg_start()
             result = ""
-            for token in arg:
-                arg_callback.on_arg(token)
+            async for token in string_node(arg):
+                await arg_callback.on_arg(token)
                 result += token
-            arg_callback.on_arg_end()
+            await arg_callback.on_arg_end()
             yield result
-        args_callback.on_args_end()
+        await args_callback.on_args_end()
 
     @staticmethod
-    def _to_result(arg: Iterable[str], callback: ResultCallback) -> str:
+    async def _to_result(arg: AsyncIterator[str], callback: ResultCallback) -> str:
         result = ""
-        callback.on_start()
-        for token in arg:
-            callback.on_result(token)
+        await callback.on_start()
+        async for token in arg:
+            await callback.on_result(token)
             result += token
-        callback.on_end()
+        await callback.on_end()
         return result
-

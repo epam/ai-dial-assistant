@@ -3,8 +3,7 @@ from typing import Dict, Iterator, List
 import wolframalpha
 from typing_extensions import override
 
-from chains.command_chain import ExecutionCallback
-from protocol.commands.base import Command
+from protocol.commands.base import Command, ExecutionCallback
 
 app_id = "8TJ67Y-PJ8R4338TQ"
 
@@ -15,7 +14,7 @@ class WolframAlpha(Command):
         return "wolfram-alpha"
 
     @override
-    def execute(self, args: List[str], execution_callback: ExecutionCallback) -> str:
+    async def execute(self, args: List[str], execution_callback: ExecutionCallback) -> str:
         assert len(args) == 1
         request = args[0]
 

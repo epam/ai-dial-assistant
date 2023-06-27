@@ -1,14 +1,7 @@
-from queue import Queue
-from typing import Optional, Any
-from uuid import UUID
-
-from langchain.callbacks.base import BaseCallbackHandler
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import AIMessage, HumanMessage
-from typing_extensions import override
 
 from llm.callback import CallbackWithNewLines
-
 
 if __name__ == "__main__":
     callbacks = [CallbackWithNewLines()]
@@ -35,4 +28,3 @@ if __name__ == "__main__":
             ]
         ],
     )
-    # content = llm_result.generations[0][-1].text

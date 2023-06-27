@@ -1,28 +1,25 @@
-import threading
 from abc import ABC
-from queue import Queue
-from typing import Any, Generator, List, Optional, Union
+from asyncio import Queue, create_task
+from typing import Any, List, Optional, Union, AsyncIterator
 from uuid import UUID
 
-from langchain.callbacks.base import BaseCallbackHandler
+from langchain.callbacks.base import AsyncCallbackHandler
 from langchain.chat_models import ChatOpenAI
-from langchain.prompts.chat import ChatPromptValue
 from langchain.schema import AIMessage, BaseMessage, LLMResult
 from typing_extensions import override
 
 from utils.token_counter import TokenCounter
 
-ERROR_PREFIX = "error:"
-DATA_PREFIX = "data:"
-END_TOKEN = "[DONE]"
 
+class AsyncChunksCallbackHandler(AsyncCallbackHandler):
+    error_prefix = "error:"
+    data_prefix = "data:"
 
-class ChunksCallback(BaseCallbackHandler):
-    def __init__(self):
-        self._queue = Queue[str]()
+    def __init__(self, queue: Queue[str | None]):
+        self.queue = queue
 
     @override
-    def on_llm_new_token(
+    async def on_llm_new_token(
         self,
         token: str,
         *,
@@ -30,21 +27,10 @@ class ChunksCallback(BaseCallbackHandler):
         parent_run_id: Optional[UUID] = None,
         **kwargs: Any,
     ) -> Any:
-        self._queue.put(DATA_PREFIX + token)
+        await self.queue.put(AsyncChunksCallbackHandler.data_prefix + token)
 
     @override
-    def on_text(
-        self,
-        text: str,
-        *,
-        run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        **kwargs: Any,
-    ) -> Any:
-        self._queue.put(text)
-
-    @override
-    def on_llm_error(
+    async def on_llm_error(
         self,
         error: Union[Exception, KeyboardInterrupt],
         *,
@@ -52,10 +38,10 @@ class ChunksCallback(BaseCallbackHandler):
         parent_run_id: Optional[UUID] = None,
         **kwargs: Any,
     ) -> Any:
-        self._queue.put(ERROR_PREFIX + str(error))
+        await self.queue.put(AsyncChunksCallbackHandler.error_prefix + str(error))
 
     @override
-    def on_llm_end(
+    async def on_llm_end(
         self,
         response: LLMResult,
         *,
@@ -63,7 +49,7 @@ class ChunksCallback(BaseCallbackHandler):
         parent_run_id: Optional[UUID] = None,
         **kwargs: Any,
     ) -> Any:
-        self._queue.put(END_TOKEN)
+        await self.queue.put(None)
 
 
 class ModelClient(ABC):
@@ -76,45 +62,38 @@ class ModelClient(ABC):
         self.stop = stop
         self.token_counter = TokenCounter()
 
-    def generate(self, prompt: List[BaseMessage]) -> AIMessage:
-        llm_result = self.model.generate_prompt(
-            [ChatPromptValue(messages=prompt)], self.stop
-        )
+    def generate(self, messages: List[BaseMessage]) -> AIMessage:
+        llm_result = self.model.generate([messages], self.stop)
         content = llm_result.generations[0][-1].text
         response = AIMessage(content=content)
         self.token_counter.update(
             self.model.model_name,
-            self.model.get_num_tokens_from_messages(prompt),
+            self.model.get_num_tokens_from_messages(messages),
             self.model.get_num_tokens_from_messages([response]),
         )
         self.token_counter.print()
         return response
 
-    def _generate(self, prompt: List[BaseMessage], callback: ChunksCallback):
-        self.model.generate_prompt(
-            [ChatPromptValue(messages=prompt)], self.stop, callbacks=[callback]
-        )
-
-    def stream(self, prompt: List[BaseMessage]) -> Generator[AIMessage, Any, None]:
-        callback = ChunksCallback()
-        thread = threading.Thread(target=self._generate, args=(prompt, callback))
-        thread.start()
+    async def agenerate(self, messages: List[BaseMessage]) -> AsyncIterator[str]:
+        queue = Queue[str | None]()
+        callback = AsyncChunksCallbackHandler(queue)
+        producer = create_task(self.model.agenerate([messages], self.stop, callbacks=[callback]))
         content = ""
         while True:
-            item = callback._queue.get()
-            if item == END_TOKEN:
+            item = await callback.queue.get()
+            if item is None:
                 break
-            if item.startswith(ERROR_PREFIX):
-                raise Exception(item[len(ERROR_PREFIX) :])
+            if item.startswith(AsyncChunksCallbackHandler.error_prefix):
+                raise Exception(item[len(AsyncChunksCallbackHandler.error_prefix):])
 
-            token = item[len(DATA_PREFIX) :]
+            token = item[len(AsyncChunksCallbackHandler.data_prefix):]
             content += token
-            yield AIMessage(content=token)
+            yield token
 
-        thread.join()
+        await producer
         self.token_counter.update(
             self.model.model_name,
-            self.model.get_num_tokens_from_messages(prompt),
+            self.model.get_num_tokens_from_messages(messages),
             self.model.get_num_tokens_from_messages([AIMessage(content=content)]),
         )
         self.token_counter.print()

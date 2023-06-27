@@ -4,8 +4,7 @@ from typing import Any, Dict, List
 
 from typing_extensions import override
 
-from chains.command_chain import ExecutionCallback
-from protocol.commands.base import Command
+from protocol.commands.base import Command, ExecutionCallback
 
 
 def parse_to_number(val: Any) -> int | float:
@@ -28,7 +27,7 @@ class BigNumberMultiplication(Command):
         return "big-number-multiplication"
 
     @override
-    def execute(self, args: List[str], execution_callback: ExecutionCallback) -> Any:
+    async def execute(self, args: List[str], execution_callback: ExecutionCallback) -> Any:
         operands = list(map(parse_to_number, args))
 
         return reduce(operator.mul, operands, 1)

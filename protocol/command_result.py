@@ -25,10 +25,10 @@ def responses_to_text(responses: List[CommandResult]) -> str:
     return json.dumps({"responses": responses})
 
 
-def execute_command(command: Command, args: List[str], execution_callback: ExecutionCallback) -> CommandResult:
+async def execute_command(command: Command, args: List[str], execution_callback: ExecutionCallback) -> CommandResult:
     response: Any
     try:
-        response = command.execute(args, execution_callback)
+        response = await command.execute(args, execution_callback)
         status = Status.SUCCESS
     except Exception as e:
         print_exception()
