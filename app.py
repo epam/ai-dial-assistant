@@ -62,8 +62,6 @@ async def index(request: Request):
     messages = data["messages"]
     addons = data.get("addons", [])
 
-    callback = ServerChainCallback()
-
     tools: dict[str, PluginOpenAI] = {}
     for addon in addons:
         info = get_open_ai_plugin_info(addon["url"])
@@ -93,13 +91,12 @@ async def index(request: Request):
     )
 
     async def event_stream():
+        callback = ServerChainCallback()
         producer = create_task(chain.run_chat(history, callback))
         while True:
             item = await callback.queue.get()
             if item is None:
-                choice = {"delta": {}, "finish_reason": "stop"}
-                message = create_chunk(response_id, timestamp, choice)
-                yield message
+                yield create_chunk(response_id, timestamp, {"delta": {}, "finish_reason": "stop"})
                 yield "data: [DONE]\n"
                 break
 

@@ -77,7 +77,7 @@ async def main() -> None:
     tools: dict[str, PluginTool] = {}
 
     command_dict: CommandDict = {
-        RunPlugin.token(): lambda: RunPlugin(tools),
+        RunPlugin.token(): lambda: RunPlugin(model, tools),
         SayOrAsk.token(): SayOrAsk,
     }
 

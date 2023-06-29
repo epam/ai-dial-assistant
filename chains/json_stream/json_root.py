@@ -34,6 +34,9 @@ class JsonRoot(JsonNode):
 
     async def node(self) -> JsonNode:
         await self._event.wait()
+        if self._node is None:
+            raise Exception("Node is not parsed")
+
         return JsonNode.throw_if_exception(self._node)
 
     def type(self) -> str:
