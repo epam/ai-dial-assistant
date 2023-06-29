@@ -100,5 +100,5 @@ if __name__ == "__main__":
     total_response = [{}]
     for chunk in response:
         os.system('cls')
-        print(json.dumps(total_response[0], indent=4).replace('\\n', '\n'))
         total_response: List[Dict] = merge(total_response, chunk.to_dict_recursive()["choices"])
+        print(json.dumps(total_response[0], indent=4).replace('\\n', '\n'))
