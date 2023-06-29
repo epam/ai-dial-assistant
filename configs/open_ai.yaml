@@ -1,4 +1,4 @@
-model_name: gpt-4-0314
+model_name: gpt-4
 temperature: 0.0
 request_timeout: 120
 openai_log_level: info

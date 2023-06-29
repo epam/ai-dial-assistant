@@ -1,7 +1,10 @@
-from asyncio import create_task
+import json
+from asyncio import create_task, Queue
+from collections.abc import AsyncIterator
 
 from typing_extensions import override
 
+from chains.json_stream.json_root import JsonRoot, RootNodeResolver
 from chains.json_stream.parsing_context import ParsingContext
 from chains.json_stream.json_array import JsonArray
 from chains.json_stream.json_node import JsonNode, NodeResolver
@@ -13,46 +16,75 @@ from chains.json_stream.tokenator import Tokenator
 
 def array_node(node: JsonNode) -> JsonArray:
     if not isinstance(node, JsonArray):
-        raise Exception("Not an array node")
+        raise ValueError(f"Expected json array at position {node.char_position}, got {node.type}")
 
     return node
 
 
 def object_node(node: JsonNode) -> JsonObject:
     if not isinstance(node, JsonObject):
-        raise Exception("Not an object node")
+        raise ValueError(f"Expected json object at position {node.char_position}, got {node.type}")
 
     return node
 
 
 def string_node(node: JsonNode) -> JsonString:
     if not isinstance(node, JsonString):
-        raise Exception("Not a string node")
+        raise ValueError(f"Expected json string at position {node.char_position}, got {node.type}")
 
     return node
 
 
-class RootNodeResolver(NodeResolver):
-    @override
-    async def resolve(self, stream: Tokenator) -> JsonNode:
-        normalised_stream = JsonNormalizer(stream)
-        char = await normalised_stream.apeek()
-        if char == JsonObject.token():
-            return JsonObject()
-
-        if char == JsonString.token():
-            return JsonString()
-
-        if char == JsonArray.token():
-            return JsonArray()
-
-        raise Exception(f"Unexpected symbol: {char} at {stream.char_position}")
+async def to_string(node: JsonNode) -> AsyncIterator[str]:
+    if isinstance(node, JsonString):
+        yield '"'
+        async for token in string_node(node):
+            yield json.dumps(token)[1:-1]
+        yield '"'
+    elif isinstance(node, JsonObject):
+        yield '{'
+        separate = False
+        async for key, value in object_node(node):
+            if separate:
+                yield ', '
+            yield json.dumps(key)
+            yield ': '
+            async for token in to_string(value):
+                yield token
+            separate = True
+        yield '}'
+    elif isinstance(node, JsonArray):
+        yield '['
+        separate = False
+        async for value in array_node(node):
+            if separate:
+                yield ','
+            async for token in to_string(value):
+                yield token
+            separate = True
+        yield ']'
+    else:
+        raise ValueError(f"Unexpected node type: {node.type}")
 
 
 class JsonParser:
     @staticmethod
     async def parse(stream: Tokenator) -> ParsingContext:
-        node_resolver = RootNodeResolver()
-        root = await node_resolver.resolve(stream)
-        task = create_task(root.parse(stream, node_resolver))
+        root = JsonRoot()
+        task = create_task(JsonParser._parse_root(root, stream))
         return ParsingContext(root, task)
+
+    @staticmethod
+    async def _parse_root(root: JsonRoot, stream: Tokenator):
+        try:
+            node_resolver = RootNodeResolver()
+            await root.parse(stream, node_resolver)
+            node = await root.node()
+            await node.parse(stream, node_resolver)
+        finally:
+            await JsonParser._drain_stream(stream)
+
+    @staticmethod
+    async def _drain_stream(stream: Tokenator):
+        async for _ in stream:
+            pass

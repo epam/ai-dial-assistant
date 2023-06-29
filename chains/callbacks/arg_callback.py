@@ -11,12 +11,12 @@ class ArgCallback:
 
     async def on_arg_start(self):
         """Called when the arg starts"""
-        await self.callback('"' if self.arg_index == 0 else ', "')
+        if self.arg_index > 0:
+            await self.callback(', ')
 
     async def on_arg(self, token: str):
         """Called when an argument token is read"""
-        await self.callback(token.replace('"', '\\"'))
+        await self.callback(token)
 
     async def on_arg_end(self):
         """Called when the arg ends"""
-        await self.callback('"')

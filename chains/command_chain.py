@@ -1,22 +1,21 @@
 import json
-import traceback
-from typing import List, Iterable, AsyncIterator, Any
+from typing import List, AsyncIterator, Any
 
 from langchain.prompts.chat import HumanMessagePromptTemplate
-from langchain.schema import AIMessage, BaseMessage, HumanMessage
+from langchain.schema import AIMessage, BaseMessage
 
 from chains.callbacks.chain_callback import ChainCallback
 from chains.callbacks.command_callback import CommandCallback
 from chains.callbacks.result_callback import ResultCallback
 from chains.json_stream.json_node import JsonNode
-from chains.json_stream.json_parser import JsonParser, object_node, array_node, string_node
+from chains.json_stream.json_parser import JsonParser, string_node, to_string
 from chains.json_stream.tokenator import Tokenator
 from chains.model_client import ModelClient
-from protocol.command_result import responses_to_text, execute_command, Status, CommandResult
-from protocol.commands.base import FinalCommand
+from chains.request_parser import RequestParser
+from protocol.command_result import responses_to_text, CommandResult, Status
+from protocol.commands.base import FinalCommand, Command
 from protocol.execution_context import ExecutionContext
-from utils.printing import print_base_message
-from utils.text import join_string
+from utils.printing import print_base_message, print_exception
 
 
 class TextCollector(AsyncIterator[str]):
@@ -33,6 +32,9 @@ class TextCollector(AsyncIterator[str]):
         return chunk
 
 
+MAX_MESSAGE_COUNT = 20
+
+
 class CommandChain:
     def __init__(
         self,
@@ -46,82 +48,72 @@ class CommandChain:
         self.resp_prompt = resp_prompt
         self.name = name
 
-    def _session_prefix(self) -> str:
-        return f"[{self.name}] "
-
-    def _print_session_prefix(self, message: BaseMessage):
-        prefix_message = message.copy()
-        prefix_message.content = self._session_prefix()
-        print_base_message(prefix_message, end="")
+    def _print(self, message: BaseMessage) -> BaseMessage:
+        print_base_message(f"[{self.name}] ", message)
+        return message
 
     async def run_chat(self, history: List[BaseMessage], callback: ChainCallback) -> str:
         for message in history:
-            self._print_session_prefix(message)
-            print_base_message(message)
+            self._print(message)
 
         await callback.on_start()
+        message_count = 0
         while True:
-            self._print_session_prefix(AIMessage(content=""))
+            if message_count >= MAX_MESSAGE_COUNT:
+                await callback.on_end()
+                raise Exception(f"Max message count of {MAX_MESSAGE_COUNT} exceeded")
+            message_count += 1
+
             token_stream = TextCollector(self.model_client.agenerate(history))
+            parsing_content = await JsonParser.parse(Tokenator(token_stream))
 
             try:
                 responses: List[CommandResult] = []
-                parsing_content = await JsonParser.parse(Tokenator(token_stream))
-                invocations = await object_node(parsing_content.node).get("commands")
-                async for invocation in array_node(invocations):
-                    invocation_object = object_node(invocation)
-                    command_name = await join_string(string_node(await invocation_object.get("command")))
+                request_parser = RequestParser(await parsing_content.root.node())
+                async for invocation in request_parser.parse_invocations():
+                    command_name = await invocation.parse_name()
                     command = self.ctx.create_command(command_name)
-                    args = array_node(await invocation_object.get("args"))
+                    args = invocation.parse_args()
                     if isinstance(command, FinalCommand):
                         arg = await anext(args)
                         result = await CommandChain._to_result(string_node(arg), callback.result_callback())
                         await callback.on_end()
                         return result
                     else:
-                        command_callback = callback.command_callback()
-                        await command_callback.on_command(command_name)
-                        response = await execute_command(
-                            command,
-                            [arg async for arg in CommandChain._to_args(args, command_callback)],
-                            command_callback.execution_callback())
-                        await command_callback.on_result(response["response"])
+                        response = await CommandChain._execute_command(
+                            command_name, command, args, callback.command_callback())
+
                         responses.append(response)
 
                 await parsing_content.finish_parsing()
 
-                await callback.on_ai_message(token_stream.buffer)
-                history.append(AIMessage(content=token_stream.buffer))
+                history.append(self._print(AIMessage(content=token_stream.buffer)))
 
                 response_text = responses_to_text(responses)
-                response = self.resp_prompt.format(responses=response_text)
-                self._print_session_prefix(response)
-                print_base_message(response)
-                await callback.on_human_message(response_text)
-                history.append(response)
-            except Exception as e:
-                traceback.print_exc()
-                await callback.on_error(e)
-                history.append(AIMessage(content=token_stream.buffer))
+                history.append(self._print(self.resp_prompt.format(responses=response_text)))
 
-                response = self.resp_prompt.format(responses=json.dumps({"error": str(e)}))
-                self._print_session_prefix(response)
-                print_base_message(response)
-                history.append(response)
+                await callback.on_state(token_stream.buffer, response_text)
+            except Exception as e:
+                print_exception()
+                await callback.on_error(e)
+
+                await parsing_content.finish_parsing()
+                history.append(self._print(AIMessage(content=token_stream.buffer)))
+                history.append(self._print(self.resp_prompt.format(responses=json.dumps({"error": str(e)}))))
 
     @staticmethod
-    async def _to_args(args: AsyncIterator[JsonNode], callback: CommandCallback) -> AsyncIterator[str]:
+    async def _to_args(args: AsyncIterator[JsonNode], callback: CommandCallback) -> AsyncIterator[Any]:
         args_callback = callback.args_callback()
         await args_callback.on_args_start()
         async for arg in args:
             arg_callback = args_callback.arg_callback()
             await arg_callback.on_arg_start()
             result = ""
-            async for token in string_node(arg):
+            async for token in to_string(arg):
                 await arg_callback.on_arg(token)
                 result += token
             await arg_callback.on_arg_end()
-            yield result
+            yield json.loads(result)
         await args_callback.on_args_end()
 
     @staticmethod
@@ -133,3 +125,17 @@ class CommandChain:
             result += token
         await callback.on_end()
         return result
+
+    @staticmethod
+    async def _execute_command(name: str, command: Command, args: AsyncIterator[JsonNode], callback: CommandCallback):
+        try:
+            await callback.on_command(name)
+            args = [arg async for arg in CommandChain._to_args(args, callback)]
+            response = await command.execute(args, callback.execution_callback())
+            await callback.on_result(response)
+
+            return {"status": Status.SUCCESS, "response": response}
+        except Exception as e:
+            print_exception()
+            await callback.on_error(e)
+            return {"status": Status.ERROR, "response": str(e)}

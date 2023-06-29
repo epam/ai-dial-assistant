@@ -8,7 +8,7 @@ class JsonNormalizer(AsyncPeekable[str]):
         self.stream = stream
 
     @override
-    async def __aiter__(self):
+    def __aiter__(self):
         return self
 
     @override

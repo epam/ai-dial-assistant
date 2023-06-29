@@ -36,7 +36,7 @@ def parse_args(root_path: str = ".") -> Args:
         help=f"Path to OpenIA configuration file",
     )
 
-    parsed_args = parser.parse_args()
+    parsed_args, argv = parser.parse_known_args()
 
     chat_conf = read_conf(ChatConf, Path(parsed_args.chat_conf))
     openai_conf = read_conf(OpenAIConf, Path(parsed_args.openai_conf))

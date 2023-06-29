@@ -27,6 +27,10 @@ class PluginCommandCallback(CommandCallback):
     async def on_result(self, response):
         await self.callback(f"<<< {response}\n")
 
+    @override
+    async def on_error(self, error: Exception):
+        await self.callback(f"<<< Error: {str(error)}\n")
+
 
 class PluginResultCallback(ResultCallback):
     def __init__(self, callback: ExecutionCallback):
@@ -34,7 +38,7 @@ class PluginResultCallback(ResultCallback):
 
     @override
     async def on_start(self):
-        await self.callback("Message: ")
+        await self.callback("Result: ")
 
     @override
     async def on_result(self, token):

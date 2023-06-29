@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-import asyncio
-
-from chains.model_client import ModelClient
 from utils.init import init
 
 init()
 
+import asyncio
+
+from chains.model_client import ModelClient
 import os
 import sys
 from pathlib import Path
@@ -32,7 +32,7 @@ from utils.optional import or_else
 
 
 def collect_plugin(
-    dict: dict[str, CommandConf],
+    available_commands: dict[str, CommandConf],
     name: str,
     plugin: PluginConf,
     commands: dict[str, CommandConf],
@@ -40,11 +40,11 @@ def collect_plugin(
     command_dict: CommandDict,
 ):
     if isinstance(plugin, PluginCommand):
-        if name not in dict:
+        if name not in available_commands:
             raise ValueError(
-                f"Unknown command: {name}. Available commands: {dict.keys()}"
+                f"Unknown command: {name}. Available commands: {available_commands.keys()}"
             )
-        command = dict[name]
+        command = available_commands[name]
         commands[name] = command
         command_dict[name] = command.implementation
 
@@ -76,7 +76,7 @@ async def main() -> None:
     tools: dict[str, PluginTool] = {}
 
     command_dict: CommandDict = {
-        RunPlugin.token(): RunPlugin,
+        RunPlugin.token(): lambda: RunPlugin(tools),
         SayOrAsk.token(): SayOrAsk,
     }
 

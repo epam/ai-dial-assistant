@@ -17,7 +17,7 @@ def create_chat_from_conf(openai_conf: OpenAIConf, chat_conf: ChatConf) -> ChatO
 
     if openai_conf.azure is not None:
         return AzureChatOpenAI(
-            callbacks=callbacks,
+            # callbacks=callbacks,
             verbose=True,
             streaming=chat_conf.streaming,
             model_name=openai_conf.model_name,
@@ -27,7 +27,7 @@ def create_chat_from_conf(openai_conf: OpenAIConf, chat_conf: ChatConf) -> ChatO
         )  # type: ignore
 
     return ChatOpenAI(
-        callbacks=callbacks,
+        # callbacks=callbacks,
         verbose=True,
         streaming=chat_conf.streaming,
         model_name=openai_conf.model_name,

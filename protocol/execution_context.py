@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from protocol.commands.base import Command, CommandConstructor
 
-CommandDict = Dict[str, CommandConstructor]
+CommandDict = dict[str, CommandConstructor]
 
 
 class CommandListElem(BaseModel):
@@ -33,9 +33,3 @@ class ExecutionContext:
 
         return self.command_dict[name]()
 
-    # def parse_commands(self, commands: any) -> Iterator[Command]:
-    #     try:
-    #         for command in commands["commands"]:
-    #             yield self._create_command(command)
-    #     except Exception as e:
-    #         raise Exception(f"Can't parse commands: {str(e)}")

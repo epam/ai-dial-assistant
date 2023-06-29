@@ -2,8 +2,6 @@ import json
 from enum import Enum
 from typing import Any, List, TypedDict
 
-from pydantic import BaseModel
-
 from protocol.commands.base import Command, ExecutionCallback
 from utils.printing import print_exception
 
@@ -25,7 +23,7 @@ def responses_to_text(responses: List[CommandResult]) -> str:
     return json.dumps({"responses": responses})
 
 
-async def execute_command(command: Command, args: List[str], execution_callback: ExecutionCallback) -> CommandResult:
+async def execute_command(command: Command, args: List[Any], execution_callback: ExecutionCallback) -> CommandResult:
     response: Any
     try:
         response = await command.execute(args, execution_callback)

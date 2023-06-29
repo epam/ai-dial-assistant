@@ -38,12 +38,13 @@ def print_exception():
     print(Style.RESET_ALL, flush=True)
 
 
-def print_base_message(msg: BaseMessage, **args):
+def print_base_message(prefix: str, msg: BaseMessage, **args):
+    content = prefix + msg.content
     if isinstance(msg, HumanMessage):
-        print_human(msg.content, **args)
+        print_human(content, **args)
     elif isinstance(msg, AIMessage):
-        print_ai(msg.content, **args)
+        print_ai(content, **args)
     elif isinstance(msg, SystemMessage):
-        print_system(msg.content, **args)
+        print_system(content, **args)
     else:
-        print(msg.content, **args)
+        print(content, **args)

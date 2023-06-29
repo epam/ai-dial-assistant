@@ -19,7 +19,7 @@ def stage(index: int, content: dict[str, Any]):
 
 
 def state(index: int, content: dict[str, Any]):
-    return custom_content({"state": [{"index": index} | content]})
+    return custom_content({"state": {"invocations": [{"index": index} | content]}})
 
 
 class ServerExecutionCallback(ExecutionCallback):
@@ -43,7 +43,7 @@ class ServerCommandCallback(CommandCallback):
         await self.callback("Running command: " + command)
 
     @override
-    def execution_callback(self) -> ServerExecutionCallback:
+    def execution_callback(self) -> ExecutionCallback:
         return self.callback
 
     @override
@@ -52,8 +52,11 @@ class ServerCommandCallback(CommandCallback):
 
     @override
     async def on_result(self, response):
-        await self.callback(f"Result: {response}")
+        # Result reported by plugin
         await self.queue.put(stage(self.command_index, {"status": "finished"}))
+
+    async def on_error(self, error: Exception):
+        await self.queue.put(stage(self.command_index, {"content": str(error), "status": "failed"}))
 
 
 class ServerResultCallback(ResultCallback):
@@ -67,7 +70,7 @@ class ServerResultCallback(ResultCallback):
 class ServerChainCallback(ChainCallback):
     def __init__(self):
         self.stage_index: int = -1
-        self.message_index: int = -1
+        self.invocation_index: int = -1
         self.queue = Queue[Any | None]()
 
     @override
@@ -80,14 +83,9 @@ class ServerChainCallback(ChainCallback):
         return ServerCommandCallback(self.stage_index, self.queue)
 
     @override
-    async def on_ai_message(self, message: str):
-        self.message_index += 1
-        await self.queue.put(state(self.message_index, {"role": "assistant", "message": message}))
-
-    @override
-    async def on_human_message(self, message: str):
-        self.message_index += 1
-        await self.queue.put(state(self.message_index, {"role": "user", "message": message}))
+    async def on_state(self, request: str, response: str):
+        self.invocation_index += 1
+        await self.queue.put(state(self.invocation_index, {"request": request, "response": response}))
 
     @override
     def result_callback(self) -> ResultCallback:
@@ -100,4 +98,4 @@ class ServerChainCallback(ChainCallback):
     @override
     async def on_error(self, error: Exception):
         self.stage_index += 1
-        await self.queue.put(stage(self.stage_index, {"content": f"Error {str(error)}\n", "status": "failed"}))
+        await self.queue.put(stage(self.stage_index, {"content": f"Error: {str(error)}\n", "status": "failed"}))

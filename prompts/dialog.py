@@ -4,6 +4,10 @@ from langchain.prompts.chat import (
     SystemMessagePromptTemplate,
 )
 
+from utils.init import init
+
+init()
+
 
 # Compute today's date in the format "DD Mmm YYYY"
 def get_today_date():
@@ -15,16 +19,16 @@ def get_today_date():
 
 request_response = """
 You must always reply with a list of commands to execute:
-
 { "commands": [COMMAND_1, COMMAND_2, ...] }
 
 The command responses are returned in the following format (single response per each command):
-
 { "responses": [{
     "id": RESPONSE_ID,
     "status": SUCCESS|ERROR,
     "response": RESPONSE
 }]}
+or if contract is violated:
+{ "error": ERROR_MESSAGE }
 """.strip()
 
 system_template = """
@@ -122,7 +126,7 @@ Open API specification:
 
 open_api_plugin_template = """
 You are given API schema and description of the service.
-You must use the service to following the user's instructions.
+You must use the service to follow the user's instructions.
 
 API_DESCRIPTION:
 {{api_description}}

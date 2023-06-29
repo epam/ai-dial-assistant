@@ -47,11 +47,15 @@ def merge(target, source):
         return merge_dicts(target, source)
 
 
-openai.api_base = "http://localhost:5000"
+openai.api_base = "http://localhost:8080"
 if __name__ == "__main__":
     response: Iterable[Any] = openai.ChatCompletion.create(
         model='gpt-4',
         messages=[
+            {
+                'role': 'system',
+                'content': "Do not make up any plugins. Just say: I don't know."
+            },
             {
                 'role': 'user',
                 'content': 'What is the weather tomorrow in London in short?'
@@ -91,6 +95,7 @@ if __name__ == "__main__":
         ],
         temperature=0,
         stream=True,
+        addons=[{"url": "https://www.wolframalpha.com/.well-known/ai-plugin.json"}],
     )
     total_response = [{}]
     for chunk in response:

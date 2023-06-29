@@ -17,11 +17,8 @@ class ChainCallback:
     async def on_end(self):
         """Called when the chain ends"""
 
-    async def on_ai_message(self, message: str):
+    async def on_state(self, request: str, response: str):
         """Report an AI message"""
-
-    async def on_human_message(self, message: str):
-        """Report a human message"""
 
     def result_callback(self) -> ResultCallback:
         """Returns a callback for reporting a result"""

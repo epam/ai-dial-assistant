@@ -9,8 +9,13 @@ from chains.json_stream.tokenator import Tokenator
 
 
 class JsonArray(JsonNode, AsyncIterator[JsonNode]):
-    def __init__(self):
-        self.listener = Queue[JsonNode | None | Exception]()
+    def __init__(self, char_position: int):
+        super().__init__(char_position)
+        self.listener = Queue[JsonNode | None | BaseException]()
+
+    @property
+    def type(self) -> str:
+        return 'array'
 
     @staticmethod
     def token() -> str:
@@ -33,6 +38,7 @@ class JsonArray(JsonNode, AsyncIterator[JsonNode]):
         try:
             normalised_stream = JsonNormalizer(stream)
             char = await anext(normalised_stream)
+            self._char_position = stream.char_position
             if not char == JsonArray.token():
                 raise Exception(f"Unexpected symbol: {char} at {stream.char_position}")
 
@@ -56,5 +62,5 @@ class JsonArray(JsonNode, AsyncIterator[JsonNode]):
                     separate = True
 
             await self.listener.put(None)
-        except Exception as e:
+        except BaseException as e:
             await self.listener.put(e)

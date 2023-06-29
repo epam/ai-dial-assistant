@@ -12,10 +12,7 @@ from utils.token_counter import TokenCounter
 
 
 class AsyncChunksCallbackHandler(AsyncCallbackHandler):
-    error_prefix = "error:"
-    data_prefix = "data:"
-
-    def __init__(self, queue: Queue[str | None]):
+    def __init__(self, queue: Queue[str | BaseException | None]):
         self.queue = queue
 
     @override
@@ -27,7 +24,7 @@ class AsyncChunksCallbackHandler(AsyncCallbackHandler):
         parent_run_id: Optional[UUID] = None,
         **kwargs: Any,
     ) -> Any:
-        await self.queue.put(AsyncChunksCallbackHandler.data_prefix + token)
+        await self.queue.put(token)
 
     @override
     async def on_llm_error(
@@ -38,7 +35,7 @@ class AsyncChunksCallbackHandler(AsyncCallbackHandler):
         parent_run_id: Optional[UUID] = None,
         **kwargs: Any,
     ) -> Any:
-        await self.queue.put(AsyncChunksCallbackHandler.error_prefix + str(error))
+        await self.queue.put(error)
 
     @override
     async def on_llm_end(
@@ -80,13 +77,12 @@ class ModelClient(ABC):
         producer = create_task(self.model.agenerate([messages], self.stop, callbacks=[callback]))
         content = ""
         while True:
-            item = await callback.queue.get()
-            if item is None:
+            token = await callback.queue.get()
+            if token is None:
                 break
-            if item.startswith(AsyncChunksCallbackHandler.error_prefix):
-                raise Exception(item[len(AsyncChunksCallbackHandler.error_prefix):])
+            if isinstance(token, BaseException):
+                raise token
 
-            token = item[len(AsyncChunksCallbackHandler.data_prefix):]
             content += token
             yield token
 

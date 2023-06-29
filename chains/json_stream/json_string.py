@@ -8,8 +8,13 @@ from chains.json_stream.tokenator import Tokenator
 
 
 class JsonString(JsonNode, AsyncIterator[str]):
-    def __init__(self):
-        self.listener = Queue[str | None | Exception]()
+    def __init__(self, char_position: int):
+        super().__init__(char_position)
+        self.listener = Queue[str | None | BaseException]()
+
+    @property
+    def type(self) -> str:
+        return 'string'
 
     @staticmethod
     def token() -> str:
@@ -32,7 +37,7 @@ class JsonString(JsonNode, AsyncIterator[str]):
             async for token in JsonString.read(stream):
                 await self.listener.put(token)
             await self.listener.put(None)
-        except Exception as e:
+        except BaseException as e:
             await self.listener.put(e)
 
     @staticmethod

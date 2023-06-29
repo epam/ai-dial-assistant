@@ -12,9 +12,14 @@ from utils.text import join_string
 
 
 class JsonObject(JsonNode, AsyncIterator[Tuple[str, JsonNode]]):
-    def __init__(self):
-        self.listener = Queue[Tuple[str, JsonNode] | None | Exception]()
-        self.object: Dict[str, Any] = {}
+    def __init__(self, char_position: int):
+        super().__init__(char_position)
+        self.listener = Queue[Tuple[str, JsonNode] | None | BaseException]()
+        self.object: dict[str, Any] = {}
+
+    @property
+    def type(self) -> str:
+        return 'object'
 
     def __aiter__(self) -> AsyncIterator[Tuple[str, JsonNode]]:
         return self
@@ -81,5 +86,5 @@ class JsonObject(JsonNode, AsyncIterator[Tuple[str, JsonNode]]):
                     raise Exception(f"Unexpected symbol: {char} at {stream.char_position}")
 
             await self.listener.put(None)
-        except Exception as e:
+        except BaseException as e:
             await self.listener.put(e)

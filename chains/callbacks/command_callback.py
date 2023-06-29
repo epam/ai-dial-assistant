@@ -18,3 +18,6 @@ class CommandCallback:
 
     async def on_result(self, response):
         """Called when a result is read"""
+
+    async def on_error(self, error: Exception):
+        """Called when an error occurs"""

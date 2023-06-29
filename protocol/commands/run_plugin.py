@@ -47,6 +47,9 @@ def get_base_url(url: str) -> str:
 
 
 class RunPlugin(Command):
+    def __init__(self, plugins: dict[str, PluginTool | PluginOpenAI]):
+        self.plugins = plugins
+
     @staticmethod
     def token():
         return "run-plugin"
@@ -57,19 +60,18 @@ class RunPlugin(Command):
         name = args[0]
         query = args[1]
 
-        conf = read_conf(Conf, Path("plugins") / "index.yaml")
-
-        if name not in conf.plugins:
+        if name not in self.plugins:
             raise ValueError(
-                f"Unknown plugin: {name}. Available plugins: {conf.plugins.keys()}"
+                f"Unknown plugin: {name}. Available plugins: {self.plugins.keys()}"
             )
 
-        plugin = conf.plugins[name]
+        plugin = self.plugins[name]
 
         if isinstance(plugin, PluginCommand):
             raise ValueError(f"Command isn't a plugin: {name}")
 
         if isinstance(plugin, PluginTool):
+            conf = read_conf(Conf, Path("plugins") / "index.yaml")
             system_prefix, commands = RunPlugin._process_plugin_tool(conf, plugin)
             return await RunPlugin._run_plugin(name, query, system_prefix, commands, execution_callback)
 
