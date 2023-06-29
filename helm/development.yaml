@@ -30,7 +30,7 @@ ingress:
     alb.ingress.kubernetes.io/ssl-redirect: "443"
     alb.ingress.kubernetes.io/group.name: "allow-epam"
   hosts:
-    - addon-framework.staging.deltixhub.io
+    - assistant-service.staging.deltixhub.io
 
 serviceAccount:
   create: true
