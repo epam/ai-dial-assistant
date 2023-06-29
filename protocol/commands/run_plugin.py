@@ -3,17 +3,12 @@ from typing import Tuple, List
 from urllib.parse import urlparse
 
 from jinja2 import Template
+from langchain.chat_models import ChatOpenAI
 from langchain.tools import APIOperation
 from typing_extensions import override
 
-from chains.callbacks.result_callback import ResultCallback
 from chains.command_chain import CommandChain
-from chains.callbacks.arg_callback import ArgCallback
-from chains.callbacks.args_callback import ArgsCallback
-from chains.callbacks.command_callback import CommandCallback
-from chains.callbacks.chain_callback import ChainCallback
 from chains.model_client import ModelClient
-from cli.main_args import parse_args
 from conf.project_conf import (
     CommandConf,
     Conf,
@@ -22,7 +17,6 @@ from conf.project_conf import (
     PluginTool,
     read_conf,
 )
-from llm.base import create_chat_from_conf
 from open_api.operation_selector import (
     collect_operations,
 )
@@ -47,7 +41,8 @@ def get_base_url(url: str) -> str:
 
 
 class RunPlugin(Command):
-    def __init__(self, plugins: dict[str, PluginTool | PluginOpenAI]):
+    def __init__(self, model: ChatOpenAI,  plugins: dict[str, PluginTool | PluginOpenAI]):
+        self.model = model
         self.plugins = plugins
 
     @staticmethod
@@ -73,14 +68,14 @@ class RunPlugin(Command):
         if isinstance(plugin, PluginTool):
             conf = read_conf(Conf, Path("plugins") / "index.yaml")
             system_prefix, commands = RunPlugin._process_plugin_tool(conf, plugin)
-            return await RunPlugin._run_plugin(name, query, system_prefix, commands, execution_callback)
+            return await RunPlugin._run_plugin(name, query, system_prefix, commands, self.model, execution_callback)
 
         if isinstance(plugin, PluginOpenAI):
             # 1. Using plugin prompt approach + abbreviated endpoints
             system_prefix, commands = RunPlugin._process_plugin_open_ai_typescript_commands(
                 plugin
             )
-            return await RunPlugin._run_plugin(name, query, system_prefix, commands, execution_callback)
+            return await RunPlugin._run_plugin(name, query, system_prefix, commands, self.model, execution_callback)
 
             # 2. Using custom prompt borrowed from LangChain
             # return self._process_plugin_open_ai_typescript(plugin)
@@ -138,6 +133,7 @@ class RunPlugin(Command):
             query: str,
             system_prefix: str,
             commands: dict[str, CommandConf],
+            model: ChatOpenAI,
             execution_callback: ExecutionCallback,
     ) -> str:
         command_dict: CommandDict = {EndDialog.token(): EndDialog}
@@ -152,9 +148,6 @@ class RunPlugin(Command):
                 query=query,
             )
         ]
-
-        args = parse_args()
-        model = create_chat_from_conf(args.openai_conf, args.chat_conf)
 
         chat = CommandChain(
             model_client=ModelClient(model=model),

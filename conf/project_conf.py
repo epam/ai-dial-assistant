@@ -27,7 +27,6 @@ class OpenAIConf(BaseModel):
     temperature: float = 0.0
     request_timeout: int = 10
     openai_log_level: LogLevel = LogLevel.INFO
-    openai_api_key: str
 
     azure: Optional[AzureConf] = None
 

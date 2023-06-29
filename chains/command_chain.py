@@ -127,11 +127,12 @@ class CommandChain:
         return result
 
     @staticmethod
-    async def _execute_command(name: str, command: Command, args: AsyncIterator[JsonNode], callback: CommandCallback):
+    async def _execute_command(name: str, command: Command, args: AsyncIterator[JsonNode], callback: CommandCallback)\
+            -> CommandResult:
         try:
             await callback.on_command(name)
-            args = [arg async for arg in CommandChain._to_args(args, callback)]
-            response = await command.execute(args, callback.execution_callback())
+            args_list = [arg async for arg in CommandChain._to_args(args, callback)]
+            response = await command.execute(args_list, callback.execution_callback())
             await callback.on_result(response)
 
             return {"status": Status.SUCCESS, "response": response}
