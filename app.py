@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-from starlette.status import HTTP_401_UNAUTHORIZED
-
-from utils.open_ai import get_openai_key
-from utils.state import parse_history
-
 import json
 import os
 import sys
@@ -15,6 +10,7 @@ from typing import Any
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse
+from starlette.status import HTTP_401_UNAUTHORIZED
 
 from chains.command_chain import CommandChain
 from chains.model_client import ModelClient
@@ -28,6 +24,7 @@ from protocol.commands.say_or_ask import SayOrAsk
 from protocol.execution_context import CommandDict, ExecutionContext
 from server_callback import ServerChainCallback
 from utils.open_ai_plugin import get_open_ai_plugin_info
+from utils.state import parse_history
 
 app = FastAPI()
 
@@ -52,10 +49,6 @@ def extract_key(authorization: str) -> str:
     if authorization.lower().startswith(prefix):
         return authorization[len(prefix):].strip()
 
-    key = get_openai_key()
-    if key:
-        return key
-
     raise HTTPException(
         status_code=HTTP_401_UNAUTHORIZED,
         detail="Missing API key",
@@ -79,14 +72,14 @@ async def index(request: Request):
             url=addon["url"],
         )
 
+    args = parse_args()
+    openai_api_key = extract_key(request.headers.get("Authorization", ""))
+    model = create_chat_from_conf(args.openai_conf, args.chat_conf, openai_api_key)
+
     command_dict: CommandDict = {
-        RunPlugin.token(): lambda: RunPlugin(tools),
+        RunPlugin.token(): lambda: RunPlugin(model, tools),
         SayOrAsk.token(): EndDialog,
     }
-
-    args = parse_args()
-    args.openai_conf.openai_api_key = extract_key(request.headers.get("Authorization", ""))
-    model = create_chat_from_conf(args.openai_conf, args.chat_conf)
 
     history = parse_history(messages, tools)
     response_id = str(uuid.uuid4())

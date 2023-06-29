@@ -8,7 +8,7 @@ from conf.project_conf import ChatConf, OpenAIConf
 from llm.callback import CallbackWithNewLines
 
 
-def create_chat_from_conf(openai_conf: OpenAIConf, chat_conf: ChatConf) -> ChatOpenAI:
+def create_chat_from_conf(openai_conf: OpenAIConf, chat_conf: ChatConf, openai_api_key: str) -> ChatOpenAI:
     callbacks: Optional[List[BaseCallbackHandler]] = (
         [CallbackWithNewLines()] if chat_conf.streaming else None
     )
@@ -31,7 +31,7 @@ def create_chat_from_conf(openai_conf: OpenAIConf, chat_conf: ChatConf) -> ChatO
         verbose=True,
         streaming=chat_conf.streaming,
         model_name=openai_conf.model_name,
-        openai_api_key=openai_conf.openai_api_key,
+        openai_api_key=openai_api_key,
         temperature=openai_conf.temperature,
         request_timeout=openai_conf.request_timeout,
     )  # type: ignore

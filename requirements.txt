@@ -15,7 +15,9 @@ pyright==1.1.314
 pytest==7.2.2
 python-dotenv==1.0.0
 python-jsonrpc-server==0.4.0
+PyYAML~=6.0
 requests==2.31.0
+starlette~=0.27.0
 tiktoken==0.3.3
 uvicorn==0.22.0
 wolframalpha==5.0.0

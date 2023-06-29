@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from utils.init import init
+from utils.open_ai import get_openai_key
 
 init()
 
@@ -68,7 +69,7 @@ async def main() -> None:
     sys.path.append(os.path.abspath("plugins"))
 
     args = parse_args()
-    model = create_chat_from_conf(args.openai_conf, args.chat_conf)
+    model = create_chat_from_conf(args.openai_conf, args.chat_conf, get_openai_key())
 
     conf = read_conf(Conf, Path("plugins/index.yaml"))
 
