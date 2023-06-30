@@ -48,9 +48,15 @@ def merge(target, source):
 
 
 openai.api_base = "http://localhost:8080"
+# openai.api_base = "http://localhost:8080/openai/deployments/gpt-4"
+openai.api_key = "b36945f1e8fc4810b333f3a58d4112e0"
+openai.api_type = "azure"
+openai.api_version = "2023-03-15-preview"
+# openai.deployment_name = "gpt-4"
 # openai.api_base = "https://assistant-service.staging.deltixhub.io"
 if __name__ == "__main__":
     response: Iterable[Any] = openai.ChatCompletion.create(
+        engine='assistant',
         model='gpt-4',
         messages=[
             {
@@ -113,6 +119,6 @@ then try 'epam-10k-semantic-search' to find missing pieces of information."""
     total_response = [{}]
     for chunk in response:
         os.system('cls')
-        total_response: List[Dict] = merge(total_response, chunk.to_dict_recursive()["choices"])
+        total_response: list[dict] = merge(total_response, chunk.to_dict_recursive()["choices"])
         print(json.dumps(total_response[0], indent=4))
         #.replace('\\n', '\n'))

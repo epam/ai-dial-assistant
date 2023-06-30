@@ -11,9 +11,7 @@ from utils.yaml_loader import Loader
 
 
 class AzureConf(BaseModel):
-    deployment_name: str
     openai_api_base: str
-    openai_api_key: str
     openai_api_type: str = "azure"
     openai_api_version: str = "2023-03-15-preview"
 

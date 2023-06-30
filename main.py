@@ -17,7 +17,7 @@ from conf.project_conf import (
     PluginTool,
     read_conf,
 )
-from llm.base import create_chat_from_conf
+from llm.base import create_openai_chat
 from prompts.dialog import RESP_DIALOG_PROMPT, SYSTEM_DIALOG_MESSAGE
 from protocol.commands.run_plugin import RunPlugin
 from protocol.commands.say_or_ask import SayOrAsk
@@ -64,7 +64,7 @@ async def main() -> None:
     sys.path.append(os.path.abspath("plugins"))
 
     args = parse_args()
-    model = create_chat_from_conf(args.openai_conf, args.chat_conf, get_openai_key())
+    model = create_openai_chat(args.openai_conf, get_openai_key())
 
     conf = read_conf(Conf, Path("plugins/index.yaml"))
 

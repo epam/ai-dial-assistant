@@ -10,13 +10,15 @@ from typing import Any
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse
+from langchain.chat_models import ChatOpenAI
+from starlette.responses import Response
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from chains.command_chain import CommandChain
 from chains.model_client import ModelClient
 from cli.main_args import parse_args
 from conf.project_conf import PluginOpenAI
-from llm.base import create_chat_from_conf
+from llm.base import create_azure_chat, create_openai_chat
 from prompts.dialog import RESP_DIALOG_PROMPT
 from protocol.commands.end_dialog import EndDialog
 from protocol.commands.run_plugin import RunPlugin
@@ -57,12 +59,48 @@ def extract_key(authorization: str) -> str:
     )
 
 
-@app.post("/chat/completions")
-async def index(request: Request):
-    data = await request.json()
-    messages = data["messages"]
-    addons = data.get("addons", [])
+@app.post("/openai/deployments/{service_name}/chat/completions")
+async def azure(service_name: str, request: Request) -> Response:
+    if service_name != "assistant":
+        raise HTTPException(status_code=404)
 
+    args = parse_args()
+    default_args = args.openai_conf
+    api_version = request.query_params.get("api-version")
+    if api_version:
+        default_args.azure.openai_api_version = api_version
+    data = await request.json()
+    mode_name = data.get("model_name")
+    if mode_name:
+        default_args.model_name = mode_name
+    temperature = data.get("temperature")
+    if temperature:
+        default_args.temperature = temperature
+
+    model = create_azure_chat(default_args, default_args.model_name, request.headers["api-key"])
+
+    return process_request(model, data["messages"], data.get("addons", []))
+
+
+@app.post("/chat/completions")
+async def openai(request: Request) -> Response:
+    args = parse_args()
+    default_args = args.openai_conf
+    openai_api_key = extract_key(request.headers.get("Authorization", ""))
+    data = await request.json()
+    mode_name = data.get("model_name")
+    if mode_name:
+        default_args.model_name = mode_name
+    temperature = data.get("temperature")
+    if temperature:
+        default_args.temperature = temperature
+
+    model = create_openai_chat(default_args, openai_api_key)
+
+    return process_request(model, data["messages"], data.get("addons", []))
+
+
+def process_request(model: ChatOpenAI, messages: list[Any], addons: list[Any]) -> Response:
     tools: dict[str, PluginOpenAI] = {}
     plugin_descriptions: dict[str, str] = {}
     for addon in addons:
@@ -70,10 +108,6 @@ async def index(request: Request):
         tools[info.ai_plugin.name_for_model] = PluginOpenAI(type="open-ai-plugin", url=addon["url"])
         plugin_descriptions[info.ai_plugin.name_for_model] = or_else(
             info.open_api.info.description, info.ai_plugin.description_for_human)
-
-    args = parse_args()
-    openai_api_key = extract_key(request.headers.get("Authorization", ""))
-    model = create_chat_from_conf(args.openai_conf, args.chat_conf, openai_api_key)
 
     command_dict: CommandDict = {
         RunPlugin.token(): lambda: RunPlugin(model, tools),

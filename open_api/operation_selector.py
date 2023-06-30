@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from chains.model_client import ModelClient
 from cli.main_args import parse_args
-from llm.base import create_chat_from_conf
+from llm.base import create_openai_chat
 from prompts.open_api import OPEN_API_SELECTOR_MESSAGE
 from utils.open_ai import get_openai_key
 
@@ -61,7 +61,7 @@ def select_open_api_operation(
     api_schema = "\n\n".join([op.to_typescript() for op in ops.values()])
 
     args = parse_args()
-    model = create_chat_from_conf(args.openai_conf, args.chat_conf, get_openai_key())
+    model = create_openai_chat(args.openai_conf, get_openai_key())
 
     client = ModelClient(model=model)
     message = client.generate(
