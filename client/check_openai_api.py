@@ -49,7 +49,7 @@ def merge(target, source):
 
 openai.api_base = "http://localhost:8080"
 # openai.api_base = "http://localhost:8080/openai/deployments/gpt-4"
-openai.api_key = "b36945f1e8fc4810b333f3a58d4112e0"
+openai.api_key = os.environ["RAIL_PROXY_API_KEY"]
 openai.api_type = "azure"
 openai.api_version = "2023-03-15-preview"
 # openai.deployment_name = "gpt-4"
