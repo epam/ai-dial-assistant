@@ -4,10 +4,6 @@ from langchain.prompts.chat import (
     SystemMessagePromptTemplate,
 )
 
-from utils.init import init
-
-init()
-
 
 # Compute today's date in the format "DD Mmm YYYY"
 def get_today_date():
@@ -46,8 +42,8 @@ Plugins do not see current conversation and require all details to be provided i
 The command returns result of the plugin call.
 QUERY is a string formulating the query to the plugin.
 NAME must be one of the following plugins:
-{%- for name, tool in tools.items() %}
-    - {{name}}: {{tool.description | decap}}
+{%- for name, description in tools.items() %}
+    - {{name}}: {{description | decap}}
 {%- endfor %}
 {%- for name, command in commands.items() %}
 * {"command": "{{name}}", "args": [{{ command.args | join(", ") }}]}

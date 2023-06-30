@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
-from utils.init import init
-from utils.open_ai import get_openai_key
-
-init()
-
 import asyncio
-
-from chains.model_client import ModelClient
 import os
 import sys
 from pathlib import Path
 
-from chains.command_chain import CommandChain
 from chains.callbacks.chain_callback import ChainCallback
+from chains.command_chain import CommandChain
+from chains.model_client import ModelClient
 from cli.main_args import parse_args
 from conf.project_conf import (
     CommandConf,
@@ -28,6 +22,7 @@ from prompts.dialog import RESP_DIALOG_PROMPT, SYSTEM_DIALOG_MESSAGE
 from protocol.commands.run_plugin import RunPlugin
 from protocol.commands.say_or_ask import SayOrAsk
 from protocol.execution_context import CommandDict, ExecutionContext
+from utils.open_ai import get_openai_key
 from utils.open_ai_plugin import get_open_ai_plugin_info
 from utils.optional import or_else
 
@@ -84,9 +79,10 @@ async def main() -> None:
     for name, plugin in conf.plugins.items():
         collect_plugin(conf.commands, name, plugin, commands, tools, command_dict)
 
+    tool_descriptions = {name: tool.description for name, tool in tools.items()}
     init_messages = [
         SYSTEM_DIALOG_MESSAGE.format(
-            system_prefix=conf.system_prefix, commands=commands, tools=tools
+            system_prefix=conf.system_prefix, commands=commands, tools=tool_descriptions
         )
     ]
 

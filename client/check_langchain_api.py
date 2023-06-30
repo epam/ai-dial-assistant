@@ -7,7 +7,6 @@ if __name__ == "__main__":
     callbacks = [CallbackWithNewLines()]
     model = ChatOpenAI(
         streaming=True,
-        # callbacks=callbacks,
         model_name="gpt-4",
         openai_api_base="http://localhost:5000",
         verbose=True,

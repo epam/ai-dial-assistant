@@ -8,7 +8,7 @@ from chains.callbacks.chain_callback import ChainCallback
 from chains.callbacks.command_callback import CommandCallback
 from chains.callbacks.result_callback import ResultCallback
 from chains.json_stream.json_node import JsonNode
-from chains.json_stream.json_parser import JsonParser, string_node, to_string
+from chains.json_stream.json_parser import JsonParser, string_node
 from chains.json_stream.tokenator import Tokenator
 from chains.model_client import ModelClient
 from chains.request_parser import RequestParser
@@ -109,7 +109,7 @@ class CommandChain:
             arg_callback = args_callback.arg_callback()
             await arg_callback.on_arg_start()
             result = ""
-            async for token in to_string(arg):
+            async for token in arg.to_string_tokens():
                 await arg_callback.on_arg(token)
                 result += token
             await arg_callback.on_arg_end()

@@ -30,7 +30,7 @@ def get_system_prefix(history: list[Any]) -> str:
 
 def parse_history(
     history: list[Any],
-    tools: dict[str, PluginOpenAI],
+    tools: dict[str, str],
 ) -> list[BaseMessage]:
     messages = [
         SYSTEM_DIALOG_MESSAGE.format(system_prefix=get_system_prefix(history), commands={}, tools=tools),

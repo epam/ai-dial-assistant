@@ -29,7 +29,7 @@ class PluginCommandCallback(CommandCallback):
 
     @override
     async def on_error(self, error: Exception):
-        await self.callback(f"<<< Error: {str(error)}\n")
+        await self.callback(f"\n<<< Error: {str(error)}\n")
 
 
 class PluginResultCallback(ResultCallback):

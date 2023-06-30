@@ -24,6 +24,7 @@ from protocol.commands.say_or_ask import SayOrAsk
 from protocol.execution_context import CommandDict, ExecutionContext
 from server_callback import ServerChainCallback
 from utils.open_ai_plugin import get_open_ai_plugin_info
+from utils.optional import or_else
 from utils.state import parse_history
 
 app = FastAPI()
@@ -63,12 +64,12 @@ async def index(request: Request):
     addons = data.get("addons", [])
 
     tools: dict[str, PluginOpenAI] = {}
+    plugin_descriptions: dict[str, str] = {}
     for addon in addons:
         info = get_open_ai_plugin_info(addon["url"])
-        tools[info.ai_plugin.name_for_model] = PluginOpenAI(
-            type="open-ai-plugin",
-            url=addon["url"],
-        )
+        tools[info.ai_plugin.name_for_model] = PluginOpenAI(type="open-ai-plugin", url=addon["url"])
+        plugin_descriptions[info.ai_plugin.name_for_model] = or_else(
+            info.open_api.info.description, info.ai_plugin.description_for_human)
 
     args = parse_args()
     openai_api_key = extract_key(request.headers.get("Authorization", ""))
@@ -79,7 +80,7 @@ async def index(request: Request):
         SayOrAsk.token(): EndDialog,
     }
 
-    history = parse_history(messages, tools)
+    history = parse_history(messages, plugin_descriptions)
     response_id = str(uuid.uuid4())
     timestamp = time.time()
 
@@ -100,9 +101,7 @@ async def index(request: Request):
                 yield "data: [DONE]\n"
                 break
 
-            choice = {"delta": item}
-            message = create_chunk(response_id, timestamp, choice)
-            yield message
+            yield create_chunk(response_id, timestamp, {"delta": item})
 
         await producer
 
@@ -110,6 +109,4 @@ async def index(request: Request):
 
 
 if __name__ == "__main__":
-    # Need to add this so that plugin modules residing at "plugins" folder could be references in index.yaml using relative module paths. Otherwise, we need to prefix all module paths with "plugins."
-    sys.path.append(os.path.abspath("plugins"))
     uvicorn.run(app, port=8080)

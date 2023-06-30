@@ -1,3 +1,4 @@
+from abc import ABC
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, List, Literal, Optional, Type, TypeVar

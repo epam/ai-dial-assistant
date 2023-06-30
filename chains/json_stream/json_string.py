@@ -1,18 +1,19 @@
+import json
 from asyncio import Queue
 from collections.abc import AsyncIterator
 
 from typing_extensions import override
 
-from chains.json_stream.json_node import JsonNode, NodeResolver
+from chains.json_stream.json_node import NodeResolver, ComplexNode, unexpected_symbol_error
 from chains.json_stream.tokenator import Tokenator
 
 
-class JsonString(JsonNode, AsyncIterator[str]):
+class JsonString(ComplexNode, AsyncIterator[str]):
     def __init__(self, char_position: int):
         super().__init__(char_position)
         self.listener = Queue[str | None | BaseException]()
 
-    @property
+    @override
     def type(self) -> str:
         return 'string'
 
@@ -29,7 +30,7 @@ class JsonString(JsonNode, AsyncIterator[str]):
         if result is None:
             raise StopAsyncIteration
 
-        return JsonNode.throw_if_exception(result)
+        return ComplexNode.throw_if_exception(result)
 
     @override
     async def parse(self, stream: Tokenator, dependency_resolver: NodeResolver):
@@ -40,11 +41,18 @@ class JsonString(JsonNode, AsyncIterator[str]):
         except BaseException as e:
             await self.listener.put(e)
 
+    @override
+    async def to_string_tokens(self) -> AsyncIterator[str]:
+        yield JsonString.token()
+        async for token in self:
+            yield json.dumps(token)[1:-1]
+        yield JsonString.token()
+
     @staticmethod
     async def read(stream: Tokenator) -> AsyncIterator[str]:
         char = await anext(stream)
         if not char == JsonString.token():
-            raise Exception(f"Unexpected symbol: {char} at {stream.char_position}")
+            raise unexpected_symbol_error(char, stream.char_position)
         result = ""
         token_position = stream.token_position
         while True:

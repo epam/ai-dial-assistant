@@ -56,7 +56,7 @@ class ServerCommandCallback(CommandCallback):
         await self.queue.put(stage(self.command_index, {"status": "finished"}))
 
     async def on_error(self, error: Exception):
-        await self.queue.put(stage(self.command_index, {"content": str(error), "status": "failed"}))
+        await self.queue.put(stage(self.command_index, {"content": f"\n{str(error)}", "status": "failed"}))
 
 
 class ServerResultCallback(ResultCallback):
