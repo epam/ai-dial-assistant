@@ -1,5 +1,6 @@
 import json
 from typing import Union
+from urllib.parse import urljoin
 
 from langchain.tools import APIOperation, OpenAPISpec
 from pydantic import BaseModel
@@ -41,8 +42,7 @@ def collect_operations(spec: OpenAPISpec, base_url: str) -> OpenAPIOperations:
 
     def add_operation(spec, path, method):
         operation = APIOperation.from_openapi_spec(spec, path, method)
-        if operation.base_url is None:
-            operation.base_url = base_url
+        operation.base_url = urljoin(operation.base_url, base_url)
         operations[operation.operation_id] = operation
 
     if spec.paths is None:

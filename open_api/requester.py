@@ -1,4 +1,5 @@
 from typing import Dict, List, NamedTuple, Optional
+from urllib.parse import urljoin
 
 from langchain.requests import Requests
 from langchain.tools.openapi.utils.api_models import APIOperation
@@ -31,7 +32,7 @@ class OpenAPIEndpointRequester:
 
     def _construct_path(self, args: Dict[str, str]) -> str:
         """Construct the path from the deserialized input."""
-        path = self.operation.base_url + self.operation.path
+        path = urljoin(self.operation.base_url, self.operation.path)
         for param in self.param_mapping.path_params:
             path = path.replace(f"{{{param}}}", str(args.pop(param, "")))
         return path
