@@ -79,7 +79,7 @@ async def azure(service_name: str, request: Request) -> Response:
 
     model = create_azure_chat(default_args, default_args.model_name, request.headers["api-key"])
 
-    return process_request(model, data["messages"], data.get("addons", []))
+    return await process_request(model, data["messages"], data.get("addons", []))
 
 
 @app.post("/chat/completions")
@@ -97,7 +97,7 @@ async def openai(request: Request) -> Response:
 
     model = create_openai_chat(default_args, openai_api_key)
 
-    return process_request(model, data["messages"], data.get("addons", []))
+    return await process_request(model, data["messages"], data.get("addons", []))
 
 
 @app.get("/healthcheck/status200")
@@ -105,11 +105,11 @@ def status200() -> Response:
     return Response("Service is running...", status_code=200)
 
 
-def process_request(model: ChatOpenAI, messages: list[Any], addons: list[Any]) -> Response:
+async def process_request(model: ChatOpenAI, messages: list[Any], addons: list[Any]) -> Response:
     tools: dict[str, PluginOpenAI] = {}
     plugin_descriptions: dict[str, str] = {}
     for addon in addons:
-        info = get_open_ai_plugin_info(addon["url"])
+        info = await get_open_ai_plugin_info(addon["url"])
         tools[info.ai_plugin.name_for_model] = PluginOpenAI(type="open-ai-plugin", url=addon["url"])
         plugin_descriptions[info.ai_plugin.name_for_model] = or_else(
             info.open_api.info.description, info.ai_plugin.description_for_human)

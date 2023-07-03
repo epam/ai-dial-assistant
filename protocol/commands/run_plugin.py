@@ -72,7 +72,7 @@ class RunPlugin(Command):
 
         if isinstance(plugin, PluginOpenAI):
             # 1. Using plugin prompt approach + abbreviated endpoints
-            system_prefix, commands = RunPlugin._process_plugin_open_ai_typescript_commands(
+            system_prefix, commands = await RunPlugin._process_plugin_open_ai_typescript_commands(
                 plugin
             )
             return await RunPlugin._run_plugin(name, query, system_prefix, commands, self.model, execution_callback)
@@ -87,8 +87,8 @@ class RunPlugin(Command):
         raise ValueError(f"Unknown plugin type: {plugin}")
 
     @staticmethod
-    def _process_plugin_open_ai_typescript_commands(plugin: PluginOpenAI) -> Tuple[str, dict[str, CommandConf]]:
-        info = get_open_ai_plugin_info(plugin.url)
+    async def _process_plugin_open_ai_typescript_commands(plugin: PluginOpenAI) -> Tuple[str, dict[str, CommandConf]]:
+        info = await get_open_ai_plugin_info(plugin.url)
         spec = info.open_api
         api_description = info.ai_plugin.description_for_model
 
