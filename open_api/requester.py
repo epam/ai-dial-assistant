@@ -1,10 +1,8 @@
 from typing import Dict, List, NamedTuple, Optional
 
-from aiohttp import ClientResponse
 from langchain.requests import Requests
 from langchain.tools.openapi.utils.api_models import APIOperation
 from pydantic import Field
-from requests import Response
 
 
 class _ParamMapping(NamedTuple):

@@ -36,11 +36,13 @@ class OpenAPIResponseWrapper(BaseModel):
 OpenAPIOperations = dict[str, APIOperation]
 
 
-def collect_operations(spec: OpenAPISpec) -> OpenAPIOperations:
+def collect_operations(spec: OpenAPISpec, base_url: str) -> OpenAPIOperations:
     operations: dict[str, APIOperation] = {}
 
     def add_operation(spec, path, method):
         operation = APIOperation.from_openapi_spec(spec, path, method)
+        if operation.base_url is None:
+            operation.base_url = base_url
         operations[operation.operation_id] = operation
 
     if spec.paths is None:

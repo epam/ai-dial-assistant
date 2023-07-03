@@ -92,7 +92,7 @@ class RunPlugin(Command):
         spec = info.open_api
         api_description = info.ai_plugin.description_for_model
 
-        ops = collect_operations(spec)
+        ops = collect_operations(spec, get_base_url(info.ai_plugin.api.url))
         api_schema = "\n\n".join([op.to_typescript() for op in ops.values()])
 
         system_prefix = Template(open_api_plugin_template).render(
