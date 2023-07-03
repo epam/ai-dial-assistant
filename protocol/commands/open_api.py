@@ -22,4 +22,4 @@ class OpenAPIChatCommand(Command):
     async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> dict:
         assert len(args) == 1
 
-        return OpenAPIEndpointRequester(self.op).execute(args[0])
+        return await OpenAPIEndpointRequester(self.op).execute(args[0])

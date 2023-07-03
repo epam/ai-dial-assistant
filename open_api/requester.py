@@ -1,5 +1,6 @@
 from typing import Dict, List, NamedTuple, Optional
 
+from aiohttp import ClientResponse
 from langchain.requests import Requests
 from langchain.tools.openapi.utils.api_models import APIOperation
 from pydantic import Field
@@ -69,22 +70,23 @@ class OpenAPIEndpointRequester:
             "params": query_params,
         }
 
-    def execute(
+    async def execute(
         self,
         args: dict,
     ) -> dict:
         request_args = self.deserialize_json_input(args)
-        method = getattr(Requests(), self.operation.method.value)
-        api_response: Response = method(**request_args)
+        # "a" for async methods
+        method = getattr(Requests(), "a" + self.operation.method.value)
+        async with method(**request_args) as response:
+            if response.status != 200:
+                method_str = str(self.operation.method.value)
+                return {
+                    "reason": response.reason,
+                    "status_code": response.status,
+                    "method:": method_str.upper(),
+                    "url": request_args["url"],
+                    "params": request_args["params"],
+                }
 
-        if api_response.status_code != 200:
-            method_str = str(self.operation.method.value)
-            return {
-                "reason": api_response.reason,
-                "status_code": api_response.status_code,
-                "method:": method_str.upper(),
-                "url": request_args["url"],
-                "params": request_args["params"],
-            }
-
-        return api_response.json()
+            # content_type=None to disable validation, sometimes response comes as text/json
+            return await response.json(content_type=None)

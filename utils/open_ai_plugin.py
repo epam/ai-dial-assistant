@@ -1,8 +1,8 @@
-from aiohttp import ClientResponse
+from urllib.parse import urljoin
+
+from langchain.requests import Requests
 from langchain.tools import OpenAPISpec
 from pydantic import BaseModel, parse_obj_as
-
-from utils.http import aget
 
 
 class AuthConf(BaseModel):
@@ -35,15 +35,22 @@ class OpenAIPluginInfo(BaseModel):
 
 async def get_open_ai_plugin_info(url: str) -> OpenAIPluginInfo:
     """Takes url pointing to .well-known/ai-plugin.json file"""
-    ai_plugin = await aget(url, _parse_ai_plugin_conf)
-    open_api = await aget(ai_plugin.api.url.replace("0.0.0.0", "localhost"), _parse_openapi_spec)
+    requests = Requests()
+    print(f"Fetching plugin data from {url}")
+    ai_plugin = await _parse_ai_plugin_conf(requests, url)
+    spec_url = urljoin(url, ai_plugin.api.url)
+    print(f"Fetching plugin spec from {spec_url}")
+    open_api = await _parse_openapi_spec(requests, spec_url)
 
     return OpenAIPluginInfo(ai_plugin=ai_plugin, open_api=open_api)
 
 
-async def _parse_ai_plugin_conf(response: ClientResponse) -> AIPluginConf:
-    return parse_obj_as(AIPluginConf, await response.json(content_type="text/json"))
+async def _parse_ai_plugin_conf(requests: Requests, url: str) -> AIPluginConf:
+    async with requests.aget(url) as response:
+        # content_type=None to disable validation, sometimes response comes as text/json
+        return parse_obj_as(AIPluginConf, await response.json(content_type=None))
 
 
-async def _parse_openapi_spec(response: ClientResponse) -> OpenAPISpec:
-    return OpenAPISpec.from_text(await response.text())
+async def _parse_openapi_spec(requests: Requests, url: str) -> OpenAPISpec:
+    async with requests.aget(url) as response:
+        return OpenAPISpec.from_text(await response.text())
