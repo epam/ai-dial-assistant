@@ -8,18 +8,19 @@ from chains.callbacks.chain_callback import ChainCallback
 from chains.callbacks.command_callback import CommandCallback
 from chains.callbacks.result_callback import ResultCallback
 from protocol.commands.base import ExecutionCallback
+from utils.state import OpenAIRole, MessageField, CustomContentField, CommonField, StateField, StageField, StageStatus
 
 
 def custom_content(content: dict[str, Any]):
-    return {"custom_content": content}
+    return {MessageField.CUSTOM_CONTENT: content}
 
 
 def stage(index: int, content: dict[str, Any]):
-    return custom_content({"stages": [{"index": index} | content]})
+    return custom_content({CustomContentField.STAGES: [{CommonField.INDEX: index} | content]})
 
 
 def state(index: int, content: dict[str, Any]):
-    return custom_content({"state": {"invocations": [{"index": index} | content]}})
+    return custom_content({CustomContentField.STATE: {StateField.INVOCATIONS: [{CommonField.INDEX: index} | content]}})
 
 
 class ServerExecutionCallback(ExecutionCallback):
@@ -29,7 +30,7 @@ class ServerExecutionCallback(ExecutionCallback):
 
     @override
     async def __call__(self, token: str):
-        await self.queue.put(stage(self.command_index, {"content": token}))
+        await self.queue.put(stage(self.command_index, {CommonField.CONTENT: token}))
 
 
 class ServerCommandCallback(CommandCallback):
@@ -53,10 +54,11 @@ class ServerCommandCallback(CommandCallback):
     @override
     async def on_result(self, response):
         # Result reported by plugin
-        await self.queue.put(stage(self.command_index, {"status": "finished"}))
+        await self.queue.put(stage(self.command_index, {StageField.STATUS: StageStatus.COMPLETED}))
 
     async def on_error(self, error: Exception):
-        await self.queue.put(stage(self.command_index, {"content": f"\n{str(error)}", "status": "failed"}))
+        await self.queue.put(
+            stage(self.command_index, {CommonField.CONTENT: f"\n{str(error)}", StageField.STATUS: StageStatus.FAILED}))
 
 
 class ServerResultCallback(ResultCallback):
@@ -64,7 +66,7 @@ class ServerResultCallback(ResultCallback):
         self.queue = queue
 
     async def on_result(self, token):
-        await self.queue.put({"content": token})
+        await self.queue.put({CommonField.CONTENT: token})
 
 
 class ServerChainCallback(ChainCallback):
@@ -75,7 +77,7 @@ class ServerChainCallback(ChainCallback):
 
     @override
     async def on_start(self):
-        await self.queue.put({"role": "assistant"})
+        await self.queue.put({MessageField.ROLE: OpenAIRole.ASSISTANT})
 
     @override
     def command_callback(self) -> CommandCallback:
@@ -85,7 +87,8 @@ class ServerChainCallback(ChainCallback):
     @override
     async def on_state(self, request: str, response: str):
         self.invocation_index += 1
-        await self.queue.put(state(self.invocation_index, {"request": request, "response": response}))
+        await self.queue.put(
+            state(self.invocation_index, {StateField.REQUEST: request, StateField.RESPONSE: response}))
 
     @override
     def result_callback(self) -> ResultCallback:
@@ -98,4 +101,7 @@ class ServerChainCallback(ChainCallback):
     @override
     async def on_error(self, error: Exception):
         self.stage_index += 1
-        await self.queue.put(stage(self.stage_index, {"content": f"Error: {str(error)}\n", "status": "failed"}))
+        await self.queue.put(
+            stage(
+                self.stage_index,
+                {CommonField.CONTENT: f"Error: {str(error)}\n", StageField.STATUS: StageStatus.FAILED}))

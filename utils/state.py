@@ -16,14 +16,44 @@ class OpenAIRole(str, Enum):
     USER = "user"
 
 
+class MessageField(str, Enum):
+    ROLE = "role"
+    CUSTOM_CONTENT = "custom_content"
+
+
+class CustomContentField(str, Enum):
+    STAGES = "stages"
+    STATE = "state"
+
+
+class StageField(str, Enum):
+    STATUS = "status"
+
+
+class StageStatus(str, Enum):
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class StateField(str, Enum):
+    INVOCATIONS = "invocations"
+    REQUEST = "request"
+    RESPONSE = "response"
+
+
+class CommonField(str, Enum):
+    INDEX = "index"
+    CONTENT = "content"
+
+
 def sort_by_index(array: list[Any]):
-    return array.sort(key=lambda item: int(item["index"]))
+    return array.sort(key=lambda item: int(item[CommonField.INDEX]))
 
 
 def get_system_prefix(history: list[Any]) -> str:
     first_message = next(iter(history), None)
-    if first_message is not None and first_message["role"] == OpenAIRole.SYSTEM:
-        return first_message["content"]
+    if first_message is not None and first_message[MessageField.ROLE] == OpenAIRole.SYSTEM:
+        return first_message[CommonField.CONTENT]
 
     return ""
 
@@ -39,20 +69,20 @@ def parse_history(
 
     for message in history:
         if message["role"] == OpenAIRole.ASSISTANT:
-            invocations = message.get("custom_content", {})\
-                .get("state", {})\
-                .get("invocations", [])
+            invocations = message.get(MessageField.CUSTOM_CONTENT, {})\
+                .get(CustomContentField.STATE, {})\
+                .get(StateField.INVOCATIONS, [])
             sort_by_index(invocations)
             for invocation in invocations:
-                messages.append(AIMessage(content=invocation["request"]))
-                messages.append(RESP_DIALOG_PROMPT.format(responses=invocation["response"]))
+                messages.append(AIMessage(content=invocation[StateField.REQUEST]))
+                messages.append(RESP_DIALOG_PROMPT.format(responses=invocation[StateField.RESPONSE]))
 
             messages.append(AIMessage(content=commands_to_text(
-                [{"command": SayOrAsk.token(), "args": [message["content"]]}]
+                [{"command": SayOrAsk.token(), "args": [message[CommonField.CONTENT]]}]
             )))
 
-        if message["role"] == OpenAIRole.USER:
-            responses = responses_to_text([{"status": Status.SUCCESS, "response": message["content"]}])
+        if message[MessageField.ROLE] == OpenAIRole.USER:
+            responses = responses_to_text([{"status": Status.SUCCESS, "response": message[CommonField.CONTENT]}])
             messages.append(RESP_DIALOG_PROMPT.format(responses=responses))
 
     return messages
