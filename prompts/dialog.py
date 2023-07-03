@@ -36,6 +36,7 @@ Today is {{today_date}}.
 {{system_prefix}}{% endif %}
 
 The following list of commands is available to you to answer the user's questions:
+{%- if tools %}
 * {"command": "run-plugin", "args": [NAME, QUERY]}
 The command runs a specified plugin to solve a one-shot task written in natural language.
 Plugins do not see current conversation and require all details to be provided in the query to solve the task.
@@ -45,6 +46,7 @@ NAME must be one of the following plugins:
 {%- for name, description in tools.items() %}
     - {{name}}: {{description | decap}}
 {%- endfor %}
+{%- endif %}
 {%- for name, command in commands.items() %}
 * {"command": "{{name}}", "args": [{{ command.args | join(", ") }}]}
 {%- if command.description %}
