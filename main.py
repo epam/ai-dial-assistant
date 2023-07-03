@@ -48,7 +48,7 @@ def collect_plugin(
         tools[name] = plugin
     elif isinstance(plugin, PluginOpenAI):
         # Displaying OpenAI plugin as a regular tool in the main session
-        info = get_open_ai_plugin_info(plugin.url)
+        info = await get_open_ai_plugin_info(plugin.url)
         tools[name] = PluginTool(
             type="tool",
             system_prefix=plugin.system_prefix,
