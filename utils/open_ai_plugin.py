@@ -38,9 +38,10 @@ async def get_open_ai_plugin_info(url: str) -> OpenAIPluginInfo:
     requests = Requests()
     print(f"Fetching plugin data from {url}")
     ai_plugin = await _parse_ai_plugin_conf(requests, url)
-    spec_url = urljoin(url, ai_plugin.api.url)
-    print(f"Fetching plugin spec from {spec_url}")
-    open_api = await _parse_openapi_spec(requests, spec_url)
+    # Resolve relative url
+    ai_plugin.api.url = urljoin(url, ai_plugin.api.url)
+    print(f"Fetching plugin spec from {ai_plugin.api.url}")
+    open_api = await _parse_openapi_spec(requests, ai_plugin.api.url)
 
     return OpenAIPluginInfo(ai_plugin=ai_plugin, open_api=open_api)
 
