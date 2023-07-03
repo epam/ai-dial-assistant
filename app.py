@@ -100,6 +100,11 @@ async def openai(request: Request) -> Response:
     return process_request(model, data["messages"], data.get("addons", []))
 
 
+@app.get("/healthcheck/status200")
+def status200() -> Response:
+    return Response("Service is running...", status_code=200)
+
+
 def process_request(model: ChatOpenAI, messages: list[Any], addons: list[Any]) -> Response:
     tools: dict[str, PluginOpenAI] = {}
     plugin_descriptions: dict[str, str] = {}
