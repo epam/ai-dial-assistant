@@ -47,24 +47,22 @@ def merge(target, source):
         return merge_dicts(target, source)
 
 
-openai.api_base = "http://localhost:8080"
-# openai.api_base = "http://localhost:8080/openai/deployments/gpt-4"
+# openai.api_base = "http://localhost:8080"
 openai.api_key = os.environ["RAIL_PROXY_API_KEY"]
 openai.api_type = "azure"
 openai.api_version = "2023-03-15-preview"
-# openai.deployment_name = "gpt-4"
-# openai.api_base = "https://assistant-service.staging.deltixhub.io"
+openai.api_base = "https://assistant-service.staging.deltixhub.io"
 if __name__ == "__main__":
     response: Iterable[Any] = openai.ChatCompletion.create(
         engine='assistant',
         model='gpt-4',
         messages=[
-            {
-                'role': 'system',
-                'content': """Use 'epam-10k-golden-qna' and 'epam-10k-semantic-search' plugins to answer questions about EPAM in this particular order.
-First try 'epam-10k-golden-qna'. If it didn't answer the question completely,
-then try 'epam-10k-semantic-search' to find missing pieces of information."""
-            },
+#             {
+#                 'role': 'system',
+#                 'content': """Use 'epam-10k-golden-qna' and 'epam-10k-semantic-search' plugins to answer questions about EPAM in this particular order.
+# First try 'epam-10k-golden-qna'. If it didn't answer the question completely,
+# then try 'epam-10k-semantic-search' to find missing pieces of information."""
+#             },
             {
                 'role': 'user',
                 'content': 'What is EPAM?'
@@ -105,20 +103,19 @@ then try 'epam-10k-semantic-search' to find missing pieces of information."""
         temperature=0,
         stream=True,
         addons=[
-            {
-                "url": "http://localhost:5003/.well-known/ai-plugin.json"
-            },
-            {
-                "url": "http://localhost:5004/.well-known/ai-plugin.json"
-            },
             # {
-            #     "url": "http://backend.epam10k:5000/.well-known/ai-plugin.json"
-            # }
+            #     "url": "http://localhost:5003/.well-known/ai-plugin.json"
+            # },
+            # {
+            #     "url": "http://localhost:5004/.well-known/ai-plugin.json"
+            # },
+            {
+                "url": "http://backend.epam10k:5000/.well-known/ai-plugin.json"
+            }
         ],
     )
     total_response = [{}]
     for chunk in response:
         os.system('cls')
         total_response: list[dict] = merge(total_response, chunk.to_dict_recursive()["choices"])
-        print(json.dumps(total_response[0], indent=4))
-        #.replace('\\n', '\n'))
+        print(json.dumps(total_response[0], indent=4).replace('\\n', '\n'))
