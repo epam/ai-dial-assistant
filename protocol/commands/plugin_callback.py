@@ -1,3 +1,5 @@
+import json
+
 from typing_extensions import override
 
 from chains.callbacks.args_callback import ArgsCallback
@@ -13,7 +15,7 @@ class PluginCommandCallback(CommandCallback):
 
     @override
     async def on_command(self, command: str):
-        await self.callback(f"```\n{command}")
+        await self.callback(f"```javascript\n{command}")
 
     @override
     def args_callback(self) -> ArgsCallback:
@@ -25,7 +27,7 @@ class PluginCommandCallback(CommandCallback):
 
     @override
     async def on_result(self, response):
-        await self.callback(f"\n```\n```\n{response}\n```\n")
+        await self.callback(f"\n```\n```json\n{json.dumps(response)}\n```\n")
 
     @override
     async def on_error(self, error: Exception):
