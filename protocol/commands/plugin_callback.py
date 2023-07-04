@@ -13,7 +13,7 @@ class PluginCommandCallback(CommandCallback):
 
     @override
     async def on_command(self, command: str):
-        await self.callback(f"```{command}")
+        await self.callback(f"```\n{command}")
 
     @override
     def args_callback(self) -> ArgsCallback:
@@ -25,11 +25,11 @@ class PluginCommandCallback(CommandCallback):
 
     @override
     async def on_result(self, response):
-        await self.callback(f"\n```\n```{response}```\n")
+        await self.callback(f"\n```\n```\n{response}\n```\n")
 
     @override
     async def on_error(self, error: Exception):
-        await self.callback(f"\n```\n```**Error:** {str(error)}```\n")
+        await self.callback(f"\n```\n```\n**Error:** {str(error)}\n```\n")
 
 
 class PluginResultCallback(ResultCallback):
