@@ -12,7 +12,8 @@ class AuthConf(BaseModel):
 class ApiConf(BaseModel):
     type: str
     url: str
-    has_user_authentication: bool
+    has_user_authentication: bool = False
+    is_user_authenticated: bool = False
 
 
 class AIPluginConf(BaseModel):
