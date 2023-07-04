@@ -20,4 +20,4 @@ class ArgsCallback:
 
     async def on_args_end(self):
         """Called when the arguments end"""
-        await self.callback(")\n")
+        await self.callback(")")

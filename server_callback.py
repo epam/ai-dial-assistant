@@ -23,42 +23,39 @@ def state(index: int, content: dict[str, Any]):
     return custom_content({CustomContentField.STATE: {StateField.INVOCATIONS: [{CommonField.INDEX: index} | content]}})
 
 
-class ServerExecutionCallback(ExecutionCallback):
-    def __init__(self, command_index: int, queue: Queue[Any]):
-        self.command_index = command_index
-        self.queue = queue
-
-    @override
-    async def __call__(self, token: str):
-        await self.queue.put(stage(self.command_index, {CommonField.CONTENT: token}))
-
-
 class ServerCommandCallback(CommandCallback):
     def __init__(self, command_index: int, queue: Queue[Any]):
         self.command_index = command_index
         self.queue = queue
-        self.callback = ServerExecutionCallback(self.command_index, self.queue)
 
     @override
     async def on_command(self, command: str):
-        await self.callback("Running command: " + command)
+        await self._on_stage_name(command)
 
     @override
     def execution_callback(self) -> ExecutionCallback:
-        return self.callback
+        return ExecutionCallback(self._on_stage_content)
 
     @override
     def args_callback(self) -> ArgsCallback:
-        return ArgsCallback(self.callback)
+        return ArgsCallback(ExecutionCallback(self._on_stage_name))
 
     @override
     async def on_result(self, response):
         # Result reported by plugin
-        await self.queue.put(stage(self.command_index, {StageField.STATUS: StageStatus.COMPLETED}))
+        await self._on_stage({StageField.STATUS: StageStatus.COMPLETED})
 
     async def on_error(self, error: Exception):
-        await self.queue.put(
-            stage(self.command_index, {CommonField.CONTENT: f"\n{str(error)}", StageField.STATUS: StageStatus.FAILED}))
+        await self._on_stage({CommonField.CONTENT: f"\n{str(error)}", StageField.STATUS: StageStatus.FAILED})
+
+    async def _on_stage(self, delta: dict[str, Any]):
+        await self.queue.put(stage(self.command_index, delta))
+
+    async def _on_stage_content(self, token: str):
+        await self._on_stage({CommonField.CONTENT: token})
+
+    async def _on_stage_name(self, token: str):
+        await self._on_stage({StageField.NAME: token})
 
 
 class ServerResultCallback(ResultCallback):

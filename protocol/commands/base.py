@@ -1,6 +1,7 @@
 import importlib
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable
 from typing import Any, List, TypedDict, Callable
 
 from typing_extensions import override
@@ -9,8 +10,12 @@ from typing_extensions import override
 class ExecutionCallback:
     """Callback for reporting execution"""
 
+    def __init__(self, callback: Callable[[str], Awaitable[None]] = lambda token: None):
+        self.callback = callback
+
     async def __call__(self, token: str):
         """Called when a command is executed"""
+        await self.callback(token)
 
 
 class Command(ABC):

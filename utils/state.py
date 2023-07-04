@@ -28,6 +28,7 @@ class CustomContentField(str, Enum):
 
 class StageField(str, Enum):
     STATUS = "status"
+    NAME = "name"
 
 
 class StageStatus(str, Enum):
