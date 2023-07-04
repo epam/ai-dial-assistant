@@ -70,7 +70,7 @@ async def azure(service_name: str, request: Request) -> Response:
     if api_version:
         default_args.azure.openai_api_version = api_version
     data = await request.json()
-    mode_name = data.get("model_name")
+    mode_name = data.get("model")
     if mode_name:
         default_args.model_name = mode_name
     temperature = data.get("temperature")
@@ -88,7 +88,7 @@ async def openai(request: Request) -> Response:
     default_args = args.openai_conf
     openai_api_key = extract_key(request.headers.get("Authorization", ""))
     data = await request.json()
-    mode_name = data.get("model_name")
+    mode_name = data.get("model")
     if mode_name:
         default_args.model_name = mode_name
     temperature = data.get("temperature")
