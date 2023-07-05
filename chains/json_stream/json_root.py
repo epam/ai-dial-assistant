@@ -66,7 +66,7 @@ class JsonRoot(ComplexNode):
 
     async def to_string_tokens(self) -> AsyncIterator[str]:
         node = await self.node()
-        async for token in node.to_string_tokens():
+        async for token in node.to_string_tokens():  # type: ignore
             yield token
 
 

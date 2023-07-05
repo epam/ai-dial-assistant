@@ -6,7 +6,7 @@ from chains.callbacks.args_callback import ArgsCallback
 from chains.callbacks.chain_callback import ChainCallback
 from chains.callbacks.command_callback import CommandCallback
 from chains.callbacks.result_callback import ResultCallback
-from protocol.commands.base import ExecutionCallback
+from protocol.commands.base import ExecutionCallback, ResultObject, ResultType
 
 
 class PluginCommandCallback(CommandCallback):
@@ -26,8 +26,9 @@ class PluginCommandCallback(CommandCallback):
         return self.callback
 
     @override
-    async def on_result(self, response):
-        await self.callback(f"\n```\n```json\n{json.dumps(response)}\n```\n")
+    async def on_result(self, result: ResultObject):
+        syntax = "json" if result.type == ResultType.JSON else "text"
+        await self.callback(f"\n```\n```{syntax}\n{result.text}\n```\n")
 
     @override
     async def on_error(self, error: Exception):

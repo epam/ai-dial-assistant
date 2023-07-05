@@ -1,9 +1,14 @@
+import json
+from collections.abc import Callable, AsyncIterator
 from typing import Dict, List, NamedTuple, Optional
 from urllib.parse import urljoin
 
+from aiohttp import ClientResponse, hdrs
 from langchain.requests import Requests
 from langchain.tools.openapi.utils.api_models import APIOperation
 from pydantic import Field
+
+from protocol.commands.base import ResultObject, ResultType, JsonResult, TextResult
 
 
 class _ParamMapping(NamedTuple):
@@ -73,7 +78,7 @@ class OpenAPIEndpointRequester:
     async def execute(
         self,
         args: dict,
-    ) -> dict:
+    ) -> ResultObject:
         request_args = self.deserialize_json_input(args)
         # "a" for async methods
         requests = Requests()
@@ -82,13 +87,16 @@ class OpenAPIEndpointRequester:
         async with method(**request_args) as response:
             if response.status != 200:
                 method_str = str(self.operation.method.value)
-                return {
+                error_object = {
                     "reason": response.reason,
                     "status_code": response.status,
                     "method:": method_str.upper(),
                     "url": request_args["url"],
                     "params": request_args["params"],
                 }
+                return JsonResult(json.dumps(error_object))
 
-            # content_type=None to disable validation, sometimes response comes as text/json
-            return await response.json(content_type=None)
+            if "text" in response.headers[hdrs.CONTENT_TYPE]:
+                return TextResult(await response.text())
+
+            return JsonResult(json.dumps(await response.json()))

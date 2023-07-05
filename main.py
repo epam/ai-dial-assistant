@@ -27,7 +27,7 @@ from utils.open_ai_plugin import get_open_ai_plugin_info
 from utils.optional import or_else
 
 
-def collect_plugin(
+async def collect_plugin(
     available_commands: dict[str, CommandConf],
     name: str,
     plugin: PluginConf,
@@ -77,7 +77,7 @@ async def main() -> None:
     }
 
     for name, plugin in conf.plugins.items():
-        collect_plugin(conf.commands, name, plugin, commands, tools, command_dict)
+        await collect_plugin(conf.commands, name, plugin, commands, tools, command_dict)
 
     tool_descriptions = {name: tool.description for name, tool in tools.items()}
     init_messages = [

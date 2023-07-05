@@ -109,7 +109,7 @@ class CommandChain:
             arg_callback = args_callback.arg_callback()
             await arg_callback.on_arg_start()
             result = ""
-            async for token in arg.to_string_tokens():
+            async for token in arg.to_string_tokens():  # type: ignore
                 await arg_callback.on_arg(token)
                 result += token
             await arg_callback.on_arg_end()
@@ -135,7 +135,7 @@ class CommandChain:
             response = await command.execute(args_list, callback.execution_callback())
             await callback.on_result(response)
 
-            return {"status": Status.SUCCESS, "response": response}
+            return {"status": Status.SUCCESS, "response": response.text}
         except Exception as e:
             print_exception()
             await callback.on_error(e)

@@ -38,7 +38,7 @@ class Tokenator(AsyncPeekable[str]):
     async def apeek(self) -> str:
         while self._next_char_offset == len(self._token):
             self._token_position += len(self._token)
-            self._token = await anext(self._source)
+            self._token = await anext(self._source)  # type: ignore
             self._next_char_offset = 0
         return self._token[self._next_char_offset]
 

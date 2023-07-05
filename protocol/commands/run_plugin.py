@@ -1,6 +1,5 @@
 from pathlib import Path
 from typing import Tuple, List
-from urllib.parse import urlparse
 
 from jinja2 import Template
 from langchain.chat_models import ChatOpenAI
@@ -25,7 +24,7 @@ from prompts.dialog import (
     RESP_DIALOG_PROMPT,
     open_api_plugin_template,
 )
-from protocol.commands.base import Command, ExecutionCallback
+from protocol.commands.base import Command, ExecutionCallback, ResultObject, ResultType, TextResult, JsonResult
 from protocol.commands.end_dialog import EndDialog
 from protocol.commands.open_api import OpenAPIChatCommand
 from protocol.commands.plugin_callback import PluginChainCallback
@@ -44,7 +43,7 @@ class RunPlugin(Command):
         return "run-plugin"
 
     @override
-    async def execute(self, args: List[str], execution_callback: ExecutionCallback) -> str:
+    async def execute(self, args: List[str], execution_callback: ExecutionCallback) -> ResultObject:
         assert len(args) == 2
         name = args[0]
         query = args[1]
@@ -129,7 +128,7 @@ class RunPlugin(Command):
             commands: dict[str, CommandConf],
             model: ChatOpenAI,
             execution_callback: ExecutionCallback,
-    ) -> str:
+    ) -> ResultObject:
         command_dict: CommandDict = {EndDialog.token(): EndDialog}
 
         for name, command_spec in commands.items():
@@ -151,7 +150,7 @@ class RunPlugin(Command):
         )
 
         try:
-            return await chat.run_chat(init_messages, PluginChainCallback(execution_callback))
+            return JsonResult(await chat.run_chat(init_messages, PluginChainCallback(execution_callback)))
         except Exception as e:
             print_exception()
-            return "ERROR: " + str(e)
+            return TextResult("ERROR: " + str(e))
