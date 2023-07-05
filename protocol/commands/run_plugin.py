@@ -34,12 +34,6 @@ from utils.open_ai_plugin import get_open_ai_plugin_info
 from utils.printing import print_exception
 
 
-def get_base_url(url: str) -> str:
-    parsed_url = urlparse(url)
-    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
-    return base_url
-
-
 class RunPlugin(Command):
     def __init__(self, model: ChatOpenAI,  plugins: dict[str, PluginTool | PluginOpenAI]):
         self.model = model
@@ -92,7 +86,7 @@ class RunPlugin(Command):
         spec = info.open_api
         api_description = info.ai_plugin.description_for_model
 
-        ops = collect_operations(spec, get_base_url(info.ai_plugin.api.url))
+        ops = collect_operations(spec, info.ai_plugin.api.url)
         api_schema = "\n\n".join([op.to_typescript() for op in ops.values()])
 
         system_prefix = Template(open_api_plugin_template).render(

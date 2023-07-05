@@ -32,7 +32,7 @@ class OpenAPIEndpointRequester:
 
     def _construct_path(self, args: Dict[str, str]) -> str:
         """Construct the path from the deserialized input."""
-        path = self.operation.base_url + self.operation.path
+        path = self.operation.base_url.rstrip("/") + self.operation.path
         for param in self.param_mapping.path_params:
             path = path.replace(f"{{{param}}}", str(args.pop(param, "")))
         return path
