@@ -32,7 +32,7 @@ class OpenAPIEndpointRequester:
 
     def _construct_path(self, args: Dict[str, str]) -> str:
         """Construct the path from the deserialized input."""
-        path = urljoin(self.operation.base_url, self.operation.path)
+        path = self.operation.base_url + self.operation.path
         for param in self.param_mapping.path_params:
             path = path.replace(f"{{{param}}}", str(args.pop(param, "")))
         return path
@@ -65,7 +65,8 @@ class OpenAPIEndpointRequester:
         query_params = self._extract_query_params(args)
         return {
             "url": path,
-            "data": body_params,
+            "data": {},
+            "json": body_params,
             "params": query_params,
         }
 
@@ -75,7 +76,8 @@ class OpenAPIEndpointRequester:
     ) -> dict:
         request_args = self.deserialize_json_input(args)
         # "a" for async methods
-        method = getattr(Requests(), "a" + self.operation.method.value)
+        requests = Requests()
+        method = getattr(requests, "a" + self.operation.method.value)
         print(f"Request args: {request_args}")
         async with method(**request_args) as response:
             if response.status != 200:

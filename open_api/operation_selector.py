@@ -42,7 +42,7 @@ def collect_operations(spec: OpenAPISpec, base_url: str) -> OpenAPIOperations:
 
     def add_operation(spec, path, method):
         operation = APIOperation.from_openapi_spec(spec, path, method)
-        operation.base_url = urljoin(operation.base_url, base_url)
+        operation.base_url = urljoin(base_url, operation.base_url)
         operations[operation.operation_id] = operation
 
     if spec.paths is None:
