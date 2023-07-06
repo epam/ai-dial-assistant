@@ -1,7 +1,9 @@
+from typing import Any
+
 import openai
 from langchain.chat_models import AzureChatOpenAI, ChatOpenAI
 
-from conf.project_conf import OpenAIConf
+from conf.project_conf import OpenAIConf, LogLevel
 
 
 def create_openai_chat(openai_conf: OpenAIConf, openai_api_key: str) -> ChatOpenAI:
@@ -16,22 +18,19 @@ def create_openai_chat(openai_conf: OpenAIConf, openai_api_key: str) -> ChatOpen
     )  # type: ignore
 
 
-def create_azure_chat(openai_conf: OpenAIConf, deployment_name: str, openai_api_key: str) -> ChatOpenAI:
+def create_azure_chat(args: dict[str, Any], openai_api_key: str) -> ChatOpenAI:
     # callbacks: Optional[List[BaseCallbackHandler]] = (
-    #     [CallbackWithNewLines()] if chat_conf.streaming else None
+    #     [CallbackWithNewLines()]
     # )
 
-    openai.log = openai_conf.openai_log_level
+    openai.log = LogLevel.INFO
 
-    return AzureChatOpenAI(
-        # callbacks=callbacks,
-        verbose=True,
-        streaming=True,
-        model_name=openai_conf.model_name,
-        temperature=openai_conf.temperature,
-        request_timeout=openai_conf.request_timeout,
-        openai_api_key=openai_api_key,
-        deployment_name=deployment_name,
-        **openai_conf.azure.dict(),
-    )  # type: ignore
+    args = {
+        "verbose": True,
+        "streaming": True,
+        "openai_api_key": openai_api_key,
+        "deployment_name": args["model_name"]
+    } | args
+
+    return AzureChatOpenAI(**args)  # type: ignore
 

@@ -11,7 +11,7 @@ from typing_extensions import override
 class ExecutionCallback:
     """Callback for reporting execution"""
 
-    def __init__(self, callback: Callable[[str], Awaitable[None]] = lambda token: None):
+    def __init__(self, callback: Callable[[str], Awaitable[None]] = lambda token: None):  # type: ignore
         self.callback = callback
 
     async def __call__(self, token: str):

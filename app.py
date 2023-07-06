@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 import json
-import os
-import sys
 import time
 import uuid
 from asyncio import create_task
@@ -17,15 +15,14 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 from chains.command_chain import CommandChain
 from chains.model_client import ModelClient
 from cli.main_args import parse_args
-from conf.project_conf import PluginOpenAI
-from llm.base import create_azure_chat, create_openai_chat
+from llm.base import create_azure_chat
 from prompts.dialog import RESP_DIALOG_PROMPT
 from protocol.commands.end_dialog import EndDialog
 from protocol.commands.run_plugin import RunPlugin
 from protocol.commands.say_or_ask import SayOrAsk
 from protocol.execution_context import CommandDict, ExecutionContext
 from server_callback import ServerChainCallback
-from utils.open_ai_plugin import get_open_ai_plugin_info
+from utils.open_ai_plugin import get_open_ai_plugin_info, OpenAIPluginInfo
 from utils.optional import or_else
 from utils.state import parse_history
 
@@ -59,45 +56,31 @@ def extract_key(authorization: str) -> str:
     )
 
 
+def get_request_args(payload: dict, api_version: str | None) -> dict[str, str]:
+    args = {
+        "model_name": payload.get("model"),
+        "temperature": payload.get("temperature"),
+        "max_tokens": payload.get("max_tokens"),
+        "stop": payload.get("stop"),
+        "openai_api_version": api_version,
+        "user": payload.get("user")
+    }
+
+    return {k: v for k, v in args.items() if v is not None}
+
+
 @app.post("/openai/deployments/{service_name}/chat/completions")
 async def azure(service_name: str, request: Request) -> Response:
     if service_name != "assistant":
         raise HTTPException(status_code=404)
 
     args = parse_args()
-    default_args = args.openai_conf
-    api_version = request.query_params.get("api-version")
-    if api_version:
-        default_args.azure.openai_api_version = api_version
     data = await request.json()
-    mode_name = data.get("model")
-    if mode_name:
-        default_args.model_name = mode_name
-    temperature = data.get("temperature")
-    if temperature:
-        default_args.temperature = temperature
+    chat_args = args.openai_conf.dict() | get_request_args(data, request.query_params.get("api-version"))
 
-    model = create_azure_chat(default_args, default_args.model_name, request.headers["api-key"])
+    model = create_azure_chat(chat_args, request.headers["api-key"])
 
-    return await process_request(model, data["messages"], data.get("addons", []))
-
-
-@app.post("/chat/completions")
-async def openai(request: Request) -> Response:
-    args = parse_args()
-    default_args = args.openai_conf
-    openai_api_key = extract_key(request.headers.get("Authorization", ""))
-    data = await request.json()
-    mode_name = data.get("model")
-    if mode_name:
-        default_args.model_name = mode_name
-    temperature = data.get("temperature")
-    if temperature:
-        default_args.temperature = temperature
-
-    model = create_openai_chat(default_args, openai_api_key)
-
-    return await process_request(model, data["messages"], data.get("addons", []))
+    return await process_request(model, data["messages"], data.get("addons", []), data.get("user"))
 
 
 @app.get("/healthcheck/status200")
@@ -105,12 +88,12 @@ def status200() -> Response:
     return Response("Service is running...", status_code=200)
 
 
-async def process_request(model: ChatOpenAI, messages: list[Any], addons: list[Any]) -> Response:
-    tools: dict[str, PluginOpenAI] = {}
+async def process_request(model: ChatOpenAI, messages: list[Any], addons: list[Any], user: str | None) -> Response:
+    tools: dict[str, OpenAIPluginInfo] = {}
     plugin_descriptions: dict[str, str] = {}
     for addon in addons:
-        info = await get_open_ai_plugin_info(addon["url"])
-        tools[info.ai_plugin.name_for_model] = PluginOpenAI(type="open-ai-plugin", url=addon["url"])
+        info = await get_open_ai_plugin_info(addon, user)
+        tools[info.ai_plugin.name_for_model] = info
         plugin_descriptions[info.ai_plugin.name_for_model] = or_else(
             info.open_api.info.description, info.ai_plugin.description_for_human)
 

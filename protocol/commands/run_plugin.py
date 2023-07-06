@@ -63,7 +63,8 @@ class RunPlugin(Command):
         # return self._run_plugin(system_prefix, commands)
 
     @staticmethod
-    async def _process_plugin_open_ai_typescript_commands(plugin: OpenAIPluginInfo) -> Tuple[str, dict[str, CommandConf]]:
+    async def _process_plugin_open_ai_typescript_commands(
+            plugin: OpenAIPluginInfo) -> Tuple[str, dict[str, CommandConf]]:
         spec = plugin.open_api
         api_description = plugin.ai_plugin.description_for_model
 
@@ -75,7 +76,7 @@ class RunPlugin(Command):
         )
 
         def create_command(op: APIOperation):
-            return lambda: OpenAPIChatCommand(op)
+            return lambda: OpenAPIChatCommand(op, plugin.token)
 
         commands: dict[str, CommandConf] = {}
         for name, op in ops.items():

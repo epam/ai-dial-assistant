@@ -9,17 +9,16 @@ from protocol.commands.base import Command, ExecutionCallback, ResultObject
 
 
 class OpenAPIChatCommand(Command):
-    op: APIOperation
-
     @staticmethod
     def token() -> str:
         return "open-api-chat-command"
 
-    def __init__(self, op: APIOperation):
+    def __init__(self, op: APIOperation, token: str | None = None):
         self.op = op
+        self.token = token
 
     @override
     async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> ResultObject:
         assert len(args) == 1
 
-        return await OpenAPIEndpointRequester(self.op).execute(args[0])
+        return await OpenAPIEndpointRequester(self.op, self.token).execute(args[0])

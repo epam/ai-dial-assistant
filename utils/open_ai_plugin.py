@@ -1,8 +1,10 @@
 from urllib.parse import urljoin
 
+from fastapi import HTTPException
 from langchain.requests import Requests
 from langchain.tools import OpenAPISpec
 from pydantic import BaseModel, parse_obj_as
+from starlette.status import HTTP_401_UNAUTHORIZED
 
 
 class AuthConf(BaseModel):
@@ -32,19 +34,37 @@ class AIPluginConf(BaseModel):
 class OpenAIPluginInfo(BaseModel):
     ai_plugin: AIPluginConf
     open_api: OpenAPISpec
+    token: str | None
 
 
-async def get_open_ai_plugin_info(url: str) -> OpenAIPluginInfo:
+def get_plugin_token(auth_type: str, addon: dict[str, str], user: str | None) -> str | None:
+    if auth_type == 'none':
+        return user
+
+    if auth_type == 'service_http':
+        service_token = addon.get("token")
+        if service_token is None:
+            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail=f'Missing token for {addon["url"]}')
+
+        return service_token
+
+    raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail=f'Unknown auth type {auth_type}')
+
+
+async def get_open_ai_plugin_info(addon: dict[str, str], user: str | None) -> OpenAIPluginInfo:
     """Takes url pointing to .well-known/ai-plugin.json file"""
     requests = Requests()
-    print(f"Fetching plugin data from {url}")
-    ai_plugin = await _parse_ai_plugin_conf(requests, url)
+    addon_url = addon["url"]
+    print(f"Fetching plugin info from {addon_url}")
+    ai_plugin = await _parse_ai_plugin_conf(requests, addon_url)
     # Resolve relative url
-    ai_plugin.api.url = urljoin(url, ai_plugin.api.url)
+    ai_plugin.api.url = urljoin(addon_url, ai_plugin.api.url)
     print(f"Fetching plugin spec from {ai_plugin.api.url}")
     open_api = await _parse_openapi_spec(requests, ai_plugin.api.url)
 
-    return OpenAIPluginInfo(ai_plugin=ai_plugin, open_api=open_api)
+    addon_token = get_plugin_token(ai_plugin.auth.type, addon, user)
+
+    return OpenAIPluginInfo(ai_plugin=ai_plugin, open_api=open_api, token=addon_token)
 
 
 async def _parse_ai_plugin_conf(requests: Requests, url: str) -> AIPluginConf:

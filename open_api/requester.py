@@ -24,10 +24,8 @@ class OpenAPIEndpointRequester:
     Based on OpenAPIEndpointChain from LangChain.
     """
 
-    operation: APIOperation
-    param_mapping: _ParamMapping = Field(alias="param_mapping")
-
-    def __init__(self, operation: APIOperation):
+    def __init__(self, operation: APIOperation, token: str | None = None):
+        self.token = token
         self.operation = operation
         self.param_mapping = _ParamMapping(
             query_params=operation.query_params,
@@ -82,6 +80,8 @@ class OpenAPIEndpointRequester:
         request_args = self.deserialize_json_input(args)
         # "a" for async methods
         requests = Requests()
+        if self.token:
+            requests.headers = {hdrs.AUTHORIZATION: f"Bearer {self.token}"}
         method = getattr(requests, "a" + self.operation.method.value)
         print(f"Request args: {request_args}")
         async with method(**request_args) as response:
