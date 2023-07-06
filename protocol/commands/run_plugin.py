@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Tuple, List
 
 from jinja2 import Template
@@ -11,10 +10,7 @@ from chains.model_client import ModelClient
 from conf.project_conf import (
     CommandConf,
     Conf,
-    PluginCommand,
-    PluginOpenAI,
     PluginTool,
-    read_conf,
 )
 from open_api.operation_selector import (
     collect_operations,
@@ -24,17 +20,17 @@ from prompts.dialog import (
     RESP_DIALOG_PROMPT,
     open_api_plugin_template,
 )
-from protocol.commands.base import Command, ExecutionCallback, ResultObject, ResultType, TextResult, JsonResult
+from protocol.commands.base import Command, ExecutionCallback, ResultObject, TextResult, JsonResult
 from protocol.commands.end_dialog import EndDialog
 from protocol.commands.open_api import OpenAPIChatCommand
 from protocol.commands.plugin_callback import PluginChainCallback
 from protocol.execution_context import CommandDict, ExecutionContext
-from utils.open_ai_plugin import get_open_ai_plugin_info
+from utils.open_ai_plugin import OpenAIPluginInfo
 from utils.printing import print_exception
 
 
 class RunPlugin(Command):
-    def __init__(self, model: ChatOpenAI,  plugins: dict[str, PluginTool | PluginOpenAI]):
+    def __init__(self, model: ChatOpenAI,  plugins: dict[str, OpenAIPluginInfo]):
         self.model = model
         self.plugins = plugins
 
@@ -55,37 +51,23 @@ class RunPlugin(Command):
 
         plugin = self.plugins[name]
 
-        if isinstance(plugin, PluginCommand):
-            raise ValueError(f"Command isn't a plugin: {name}")
+        # 1. Using plugin prompt approach + abbreviated endpoints
+        system_prefix, commands = await RunPlugin._process_plugin_open_ai_typescript_commands(plugin)
+        return await RunPlugin._run_plugin(name, query, system_prefix, commands, self.model, execution_callback)
 
-        if isinstance(plugin, PluginTool):
-            conf = read_conf(Conf, Path("plugins") / "index.yaml")
-            system_prefix, commands = RunPlugin._process_plugin_tool(conf, plugin)
-            return await RunPlugin._run_plugin(name, query, system_prefix, commands, self.model, execution_callback)
+        # 2. Using custom prompt borrowed from LangChain
+        # return self._process_plugin_open_ai_typescript(plugin)
 
-        if isinstance(plugin, PluginOpenAI):
-            # 1. Using plugin prompt approach + abbreviated endpoints
-            system_prefix, commands = await RunPlugin._process_plugin_open_ai_typescript_commands(
-                plugin
-            )
-            return await RunPlugin._run_plugin(name, query, system_prefix, commands, self.model, execution_callback)
-
-            # 2. Using custom prompt borrowed from LangChain
-            # return self._process_plugin_open_ai_typescript(plugin)
-
-            # 3. Using plugin prompt approach + full OpenAPI specification
-            # system_prefix, commands = self._process_plugin_open_ai_json(conf, plugin)
-            # return self._run_plugin(system_prefix, commands)
-
-        raise ValueError(f"Unknown plugin type: {plugin}")
+        # 3. Using plugin prompt approach + full OpenAPI specification
+        # system_prefix, commands = self._process_plugin_open_ai_json(conf, plugin)
+        # return self._run_plugin(system_prefix, commands)
 
     @staticmethod
-    async def _process_plugin_open_ai_typescript_commands(plugin: PluginOpenAI) -> Tuple[str, dict[str, CommandConf]]:
-        info = await get_open_ai_plugin_info(plugin.url)
-        spec = info.open_api
-        api_description = info.ai_plugin.description_for_model
+    async def _process_plugin_open_ai_typescript_commands(plugin: OpenAIPluginInfo) -> Tuple[str, dict[str, CommandConf]]:
+        spec = plugin.open_api
+        api_description = plugin.ai_plugin.description_for_model
 
-        ops = collect_operations(spec, info.ai_plugin.api.url)
+        ops = collect_operations(spec, plugin.ai_plugin.api.url)
         api_schema = "\n\n".join([op.to_typescript() for op in ops.values()])
 
         system_prefix = Template(open_api_plugin_template).render(
@@ -104,20 +86,6 @@ class RunPlugin(Command):
                 result="",
             )
 
-        return system_prefix, commands
-
-    @staticmethod
-    def _process_plugin_tool(conf: Conf, plugin: PluginTool) -> Tuple[str, dict[str, CommandConf]]:
-        commands: dict[str, CommandConf] = {}
-
-        for name in plugin.commands:
-            if name not in conf.commands:
-                raise ValueError(
-                    f"Unknown command: {name}. Available commands: {conf.commands.keys()}"
-                )
-            commands[name] = conf.commands[name]
-
-        system_prefix = plugin.system_prefix
         return system_prefix, commands
 
     @staticmethod
