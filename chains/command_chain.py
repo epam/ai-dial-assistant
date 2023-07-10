@@ -8,7 +8,7 @@ from chains.callbacks.chain_callback import ChainCallback
 from chains.callbacks.command_callback import CommandCallback
 from chains.callbacks.result_callback import ResultCallback
 from chains.json_stream.json_node import JsonNode
-from chains.json_stream.json_parser import JsonParser, string_node
+from chains.json_stream.json_parser import JsonParser
 from chains.json_stream.json_string import JsonString
 from chains.json_stream.tokenator import Tokenator
 from chains.model_client import ModelClient
@@ -78,7 +78,7 @@ class CommandChain:
                     if isinstance(command, FinalCommand):
                         arg = await anext(args)
                         result = await CommandChain._to_result(
-                            string_node(arg) if isinstance(arg, JsonString) else arg.to_string_tokens(),
+                            arg if isinstance(arg, JsonString) else arg.to_string_tokens(),
                             callback.result_callback())
                         await callback.on_end()
                         await parsing_content.finish_parsing()
