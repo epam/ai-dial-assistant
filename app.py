@@ -41,7 +41,7 @@ def create_chunk(response_id: str, timestamp: int, choice: dict[str, Any]):
                 "choices": [{"index": 0} | choice]
             }
         )
-        + "\n"
+        + "\n\n"
     )
 
 
