@@ -2,6 +2,7 @@ import importlib
 import json
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable
+from enum import Enum
 from typing import Any, List, TypedDict, Callable
 
 from typing_extensions import override
@@ -10,12 +11,41 @@ from typing_extensions import override
 class ExecutionCallback:
     """Callback for reporting execution"""
 
-    def __init__(self, callback: Callable[[str], Awaitable[None]] = lambda token: None):
+    def __init__(self, callback: Callable[[str], Awaitable[None]] = lambda token: None):  # type: ignore
         self.callback = callback
 
     async def __call__(self, token: str):
         """Called when a command is executed"""
         await self.callback(token)
+
+
+class ResultType(str, Enum):
+    TEXT = "Text"
+    JSON = "JSon"
+
+
+class ResultObject:
+    def __init__(self, result_type: ResultType, text: str):
+        self._type = result_type
+        self._text = text
+
+    @property
+    def type(self) -> ResultType:
+        return self._type
+
+    @property
+    def text(self) -> str:
+        return self._text
+
+
+class TextResult(ResultObject):
+    def __init__(self, text: str):
+        super().__init__(ResultType.TEXT, text)
+
+
+class JsonResult(ResultObject):
+    def __init__(self, text: str):
+        super().__init__(ResultType.JSON, text)
 
 
 class Command(ABC):
@@ -24,7 +54,7 @@ class Command(ABC):
     def token() -> str:
         pass
 
-    async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> Any:
+    async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> ResultObject:
         raise Exception(f"Command {self} isn't implemented")
 
     def __str__(self) -> str:
@@ -33,7 +63,7 @@ class Command(ABC):
 
 class FinalCommand(Command, ABC):
     @override
-    async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> Any:
+    async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> ResultObject:
         raise Exception(f"Internal error: command {self} is final and can't be executed")
 
 

@@ -1,9 +1,14 @@
+import json
+from collections.abc import Callable, AsyncIterator
 from typing import Dict, List, NamedTuple, Optional
 from urllib.parse import urljoin
 
+from aiohttp import ClientResponse, hdrs
 from langchain.requests import Requests
 from langchain.tools.openapi.utils.api_models import APIOperation
 from pydantic import Field
+
+from protocol.commands.base import ResultObject, ResultType, JsonResult, TextResult
 
 
 class _ParamMapping(NamedTuple):
@@ -19,20 +24,18 @@ class OpenAPIEndpointRequester:
     Based on OpenAPIEndpointChain from LangChain.
     """
 
-    operation: APIOperation
-    param_mapping: _ParamMapping = Field(alias="param_mapping")
-
-    def __init__(self, operation: APIOperation):
+    def __init__(self, operation: APIOperation, plugin_auth: str | None):
         self.operation = operation
         self.param_mapping = _ParamMapping(
             query_params=operation.query_params,
             body_params=operation.body_params,
             path_params=operation.path_params,
         )
+        self.plugin_auth = plugin_auth
 
     def _construct_path(self, args: Dict[str, str]) -> str:
         """Construct the path from the deserialized input."""
-        path = urljoin(self.operation.base_url, self.operation.path)
+        path = self.operation.base_url.rstrip("/") + self.operation.path
         for param in self.param_mapping.path_params:
             path = path.replace(f"{{{param}}}", str(args.pop(param, "")))
         return path
@@ -65,28 +68,33 @@ class OpenAPIEndpointRequester:
         query_params = self._extract_query_params(args)
         return {
             "url": path,
-            "data": body_params,
+            "data": {},
+            "json": body_params,
             "params": query_params,
         }
 
     async def execute(
         self,
         args: dict,
-    ) -> dict:
+    ) -> ResultObject:
         request_args = self.deserialize_json_input(args)
         # "a" for async methods
-        method = getattr(Requests(), "a" + self.operation.method.value)
+        requests = Requests() if self.plugin_auth is None else Requests(headers={hdrs.AUTHORIZATION: self.plugin_auth})
+        method = getattr(requests, "a" + self.operation.method.value)
         print(f"Request args: {request_args}")
         async with method(**request_args) as response:
             if response.status != 200:
                 method_str = str(self.operation.method.value)
-                return {
+                error_object = {
                     "reason": response.reason,
                     "status_code": response.status,
                     "method:": method_str.upper(),
                     "url": request_args["url"],
                     "params": request_args["params"],
                 }
+                return JsonResult(json.dumps(error_object))
 
-            # content_type=None to disable validation, sometimes response comes as text/json
-            return await response.json(content_type=None)
+            if "text" in response.headers[hdrs.CONTENT_TYPE]:
+                return TextResult(await response.text())
+
+            return JsonResult(json.dumps(await response.json()))

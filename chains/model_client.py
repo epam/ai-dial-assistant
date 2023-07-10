@@ -87,9 +87,9 @@ class ModelClient(ABC):
             yield token
 
         await producer
-        self.token_counter.update(
-            self.model.model_name,
-            self.model.get_num_tokens_from_messages(messages),
-            self.model.get_num_tokens_from_messages([AIMessage(content=content)]),
-        )
-        self.token_counter.print()
+        # self.token_counter.update(
+        #     self.model.model_name,
+        #     self.model.get_num_tokens_from_messages(messages),
+        #     self.model.get_num_tokens_from_messages([AIMessage(content=content)]),
+        # )
+        # self.token_counter.print()

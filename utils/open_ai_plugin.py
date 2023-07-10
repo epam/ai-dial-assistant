@@ -1,8 +1,12 @@
 from urllib.parse import urljoin
 
+from fastapi import HTTPException
 from langchain.requests import Requests
 from langchain.tools import OpenAPISpec
 from pydantic import BaseModel, parse_obj_as
+from starlette.status import HTTP_401_UNAUTHORIZED
+
+from utils.addon_token_source import AddonTokenSource
 
 
 class AuthConf(BaseModel):
@@ -32,19 +36,36 @@ class AIPluginConf(BaseModel):
 class OpenAIPluginInfo(BaseModel):
     ai_plugin: AIPluginConf
     open_api: OpenAPISpec
+    auth: str | None
 
 
-async def get_open_ai_plugin_info(url: str) -> OpenAIPluginInfo:
+def get_plugin_auth(auth_type: str, url: str, token_source: AddonTokenSource) -> str | None:
+    if auth_type == 'none':
+        return token_source.default_auth
+
+    if auth_type == 'service_http':
+        service_token = token_source.get_token(url)
+        if service_token is None:
+            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail=f'Missing token for {url}')
+
+        return f"Bearer {service_token}"
+
+    raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail=f'Unknown auth type {auth_type}')
+
+
+async def get_open_ai_plugin_info(addon_url: str, token_source: AddonTokenSource) -> OpenAIPluginInfo:
     """Takes url pointing to .well-known/ai-plugin.json file"""
     requests = Requests()
-    print(f"Fetching plugin data from {url}")
-    ai_plugin = await _parse_ai_plugin_conf(requests, url)
+    print(f"Fetching plugin info from {addon_url}")
+    ai_plugin = await _parse_ai_plugin_conf(requests, addon_url)
     # Resolve relative url
-    ai_plugin.api.url = urljoin(url, ai_plugin.api.url)
+    ai_plugin.api.url = urljoin(addon_url, ai_plugin.api.url)
     print(f"Fetching plugin spec from {ai_plugin.api.url}")
     open_api = await _parse_openapi_spec(requests, ai_plugin.api.url)
 
-    return OpenAIPluginInfo(ai_plugin=ai_plugin, open_api=open_api)
+    addon_auth = get_plugin_auth(ai_plugin.auth.type, addon_url, token_source)
+
+    return OpenAIPluginInfo(ai_plugin=ai_plugin, open_api=open_api, auth=addon_auth)
 
 
 async def _parse_ai_plugin_conf(requests: Requests, url: str) -> AIPluginConf:

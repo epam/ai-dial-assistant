@@ -27,7 +27,7 @@ class BigNumberMultiplication(Command):
         return "big-number-multiplication"
 
     @override
-    async def execute(self, args: List[str], execution_callback: ExecutionCallback) -> Any:
+    async def execute(self, args: List[str], execution_callback: ExecutionCallback) -> str:
         operands = list(map(parse_to_number, args))
 
-        return reduce(operator.mul, operands, 1)
+        return str(reduce(operator.mul, operands, 1))

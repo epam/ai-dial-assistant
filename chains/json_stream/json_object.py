@@ -100,7 +100,7 @@ class JsonObject(ComplexNode, AsyncIterator[Tuple[str, JsonNode]]):
                 yield ', '
             yield json.dumps(key)
             yield ': '
-            async for token in value.to_string_tokens():
+            async for token in value.to_string_tokens():  # type: ignore
                 yield token
             separate = True
         yield '}'

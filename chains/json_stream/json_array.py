@@ -73,7 +73,7 @@ class JsonArray(ComplexNode, AsyncIterator[JsonNode]):
         async for value in self:
             if separate:
                 yield ', '
-            async for token in value.to_string_tokens():
+            async for token in value.to_string_tokens():  # type: ignore
                 yield token
             separate = True
         yield ']'

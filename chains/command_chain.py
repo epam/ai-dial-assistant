@@ -8,7 +8,8 @@ from chains.callbacks.chain_callback import ChainCallback
 from chains.callbacks.command_callback import CommandCallback
 from chains.callbacks.result_callback import ResultCallback
 from chains.json_stream.json_node import JsonNode
-from chains.json_stream.json_parser import JsonParser, string_node
+from chains.json_stream.json_parser import JsonParser
+from chains.json_stream.json_string import JsonString
 from chains.json_stream.tokenator import Tokenator
 from chains.model_client import ModelClient
 from chains.request_parser import RequestParser
@@ -76,8 +77,12 @@ class CommandChain:
                     args = invocation.parse_args()
                     if isinstance(command, FinalCommand):
                         arg = await anext(args)
-                        result = await CommandChain._to_result(string_node(arg), callback.result_callback())
+                        result = await CommandChain._to_result(
+                            arg if isinstance(arg, JsonString) else arg.to_string_tokens(),  # type: ignore
+                            callback.result_callback())
                         await callback.on_end()
+                        await parsing_content.finish_parsing()
+                        self._print(AIMessage(content=token_stream.buffer))
                         return result
                     else:
                         response = await CommandChain._execute_command(
@@ -109,7 +114,7 @@ class CommandChain:
             arg_callback = args_callback.arg_callback()
             await arg_callback.on_arg_start()
             result = ""
-            async for token in arg.to_string_tokens():
+            async for token in arg.to_string_tokens():  # type: ignore
                 await arg_callback.on_arg(token)
                 result += token
             await arg_callback.on_arg_end()
@@ -135,7 +140,7 @@ class CommandChain:
             response = await command.execute(args_list, callback.execution_callback())
             await callback.on_result(response)
 
-            return {"status": Status.SUCCESS, "response": response}
+            return {"status": Status.SUCCESS, "response": response.text}
         except Exception as e:
             print_exception()
             await callback.on_error(e)

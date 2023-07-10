@@ -10,12 +10,6 @@ from protocol.commands.base import CommandConstructor, resolve_constructor
 from utils.yaml_loader import Loader
 
 
-class AzureConf(BaseModel):
-    openai_api_base: str
-    openai_api_type: str = "azure"
-    openai_api_version: str = "2023-03-15-preview"
-
-
 class LogLevel(str, Enum):
     INFO = "info"
     DEBUG = "debug"
@@ -25,9 +19,7 @@ class OpenAIConf(BaseModel):
     model_name: str = "gpt-4-0314"
     temperature: float = 0.0
     request_timeout: int = 10
-    openai_log_level: LogLevel = LogLevel.INFO
-
-    azure: Optional[AzureConf] = None
+    openai_api_base: str
 
 
 class ChatConf(BaseModel):

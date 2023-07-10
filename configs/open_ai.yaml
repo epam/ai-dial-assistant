@@ -1,6 +1,4 @@
 model_name: gpt-4
 temperature: 0.0
 request_timeout: 120
-openai_log_level: info
-# azure: !include "deltix_azure.yaml"
-azure: !include "proxy_azure.yaml"
+openai_api_base: http://dial-proxy.dial-proxy

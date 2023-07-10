@@ -73,7 +73,7 @@ class JsonString(ComplexNode, AsyncIterator[str]):
     async def escape(stream: Tokenator) -> str:
         char = await anext(stream)
         if char == 'u':
-            unicode_sequence = ''.join([await anext(stream) for _ in range(4)])
+            unicode_sequence = ''.join([await anext(stream) for _ in range(4)])  # type: ignore
             return str(int(unicode_sequence, 16))
         if char in '"\\/':
             return char

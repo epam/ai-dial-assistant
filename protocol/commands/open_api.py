@@ -5,21 +5,20 @@ from typing_extensions import override
 from langchain.tools.openapi.utils.api_models import APIOperation
 
 from open_api.requester import OpenAPIEndpointRequester
-from protocol.commands.base import Command, ExecutionCallback
+from protocol.commands.base import Command, ExecutionCallback, ResultObject
 
 
 class OpenAPIChatCommand(Command):
-    op: APIOperation
-
     @staticmethod
     def token() -> str:
         return "open-api-chat-command"
 
-    def __init__(self, op: APIOperation):
+    def __init__(self, op: APIOperation, plugin_auth: str | None):
         self.op = op
+        self.plugin_auth = plugin_auth
 
     @override
-    async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> dict:
+    async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> ResultObject:
         assert len(args) == 1
 
-        return await OpenAPIEndpointRequester(self.op).execute(args[0])
+        return await OpenAPIEndpointRequester(self.op, self.plugin_auth).execute(args[0])
