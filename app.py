@@ -6,9 +6,11 @@ from asyncio import create_task
 from typing import Any
 
 import uvicorn
+from aiohttp import hdrs
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from langchain.chat_models import ChatOpenAI
+from starlette.datastructures import Headers
 from starlette.responses import Response
 from starlette.status import HTTP_401_UNAUTHORIZED
 
@@ -22,6 +24,7 @@ from protocol.commands.run_plugin import RunPlugin
 from protocol.commands.say_or_ask import SayOrAsk
 from protocol.execution_context import CommandDict, ExecutionContext
 from server_callback import ServerChainCallback
+from utils.addon_token_source import AddonTokenSource
 from utils.open_ai_plugin import get_open_ai_plugin_info, OpenAIPluginInfo
 from utils.optional import or_else
 from utils.state import parse_history
@@ -44,26 +47,15 @@ def create_chunk(response_id: str, timestamp: float, choice: dict[str, Any]):
     )
 
 
-def extract_key(authorization: str) -> str:
-    prefix = "bearer "
-    if authorization.lower().startswith(prefix):
-        return authorization[len(prefix):].strip()
-
-    raise HTTPException(
-        status_code=HTTP_401_UNAUTHORIZED,
-        detail="Missing API key",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-
-def get_request_args(payload: dict, api_version: str | None) -> dict[str, str]:
+def get_request_args(payload: dict, api_version: str | None, user_auth: str | None) -> dict[str, str]:
     args = {
         "model_name": payload.get("model"),
         "temperature": payload.get("temperature"),
         "max_tokens": payload.get("max_tokens"),
         "stop": payload.get("stop"),
         "openai_api_version": api_version,
-        "user": payload.get("user")
+        "user": payload.get("user"),
+        "headers": None if user_auth is None else {hdrs.AUTHORIZATION: user_auth}
     }
 
     return {k: v for k, v in args.items() if v is not None}
@@ -76,11 +68,14 @@ async def azure(service_name: str, request: Request) -> Response:
 
     args = parse_args()
     data = await request.json()
-    chat_args = args.openai_conf.dict() | get_request_args(data, request.query_params.get("api-version"))
+    user_auth = request.headers.get(hdrs.AUTHORIZATION)
+    chat_args = args.openai_conf.dict() | get_request_args(data, request.query_params.get("api-version"), user_auth)
 
     model = create_azure_chat(chat_args, request.headers["api-key"])
 
-    return await process_request(model, data["messages"], data.get("addons", []), data.get("user"))
+    addons = [addon["url"] for addon in data.get("addons", [])]
+    token_source = AddonTokenSource(request.headers, addons)
+    return await process_request(model, data["messages"], addons, token_source)
 
 
 @app.get("/healthcheck/status200")
@@ -88,11 +83,12 @@ def status200() -> Response:
     return Response("Service is running...", status_code=200)
 
 
-async def process_request(model: ChatOpenAI, messages: list[Any], addons: list[Any], user: str | None) -> Response:
+async def process_request(
+        model: ChatOpenAI, messages: list[Any], addons: list[str], token_source: AddonTokenSource) -> Response:
     tools: dict[str, OpenAIPluginInfo] = {}
     plugin_descriptions: dict[str, str] = {}
     for addon in addons:
-        info = await get_open_ai_plugin_info(addon, user)
+        info = await get_open_ai_plugin_info(addon, token_source)
         tools[info.ai_plugin.name_for_model] = info
         plugin_descriptions[info.ai_plugin.name_for_model] = or_else(
             info.open_api.info.description, info.ai_plugin.description_for_human)
@@ -131,4 +127,4 @@ async def process_request(model: ChatOpenAI, messages: list[Any], addons: list[A
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, port=8080)
+    uvicorn.run(app, port=7001)

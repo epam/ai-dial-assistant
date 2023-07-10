@@ -78,7 +78,7 @@ class CommandChain:
                     if isinstance(command, FinalCommand):
                         arg = await anext(args)
                         result = await CommandChain._to_result(
-                            arg if isinstance(arg, JsonString) else arg.to_string_tokens(),
+                            arg if isinstance(arg, JsonString) else arg.to_string_tokens(),  # type: ignore
                             callback.result_callback())
                         await callback.on_end()
                         await parsing_content.finish_parsing()

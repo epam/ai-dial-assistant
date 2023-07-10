@@ -76,7 +76,7 @@ class RunPlugin(Command):
         )
 
         def create_command(op: APIOperation):
-            return lambda: OpenAPIChatCommand(op, plugin.token)
+            return lambda: OpenAPIChatCommand(op, plugin.auth)
 
         commands: dict[str, CommandConf] = {}
         for name, op in ops.items():

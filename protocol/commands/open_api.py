@@ -13,12 +13,12 @@ class OpenAPIChatCommand(Command):
     def token() -> str:
         return "open-api-chat-command"
 
-    def __init__(self, op: APIOperation, token: str | None = None):
+    def __init__(self, op: APIOperation, plugin_auth: str | None):
         self.op = op
-        self.token = token
+        self.plugin_auth = plugin_auth
 
     @override
     async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> ResultObject:
         assert len(args) == 1
 
-        return await OpenAPIEndpointRequester(self.op, self.token).execute(args[0])
+        return await OpenAPIEndpointRequester(self.op, self.plugin_auth).execute(args[0])

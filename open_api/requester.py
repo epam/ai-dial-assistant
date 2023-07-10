@@ -24,14 +24,14 @@ class OpenAPIEndpointRequester:
     Based on OpenAPIEndpointChain from LangChain.
     """
 
-    def __init__(self, operation: APIOperation, token: str | None = None):
-        self.token = token
+    def __init__(self, operation: APIOperation, plugin_auth: str | None):
         self.operation = operation
         self.param_mapping = _ParamMapping(
             query_params=operation.query_params,
             body_params=operation.body_params,
             path_params=operation.path_params,
         )
+        self.plugin_auth = plugin_auth
 
     def _construct_path(self, args: Dict[str, str]) -> str:
         """Construct the path from the deserialized input."""
@@ -79,9 +79,7 @@ class OpenAPIEndpointRequester:
     ) -> ResultObject:
         request_args = self.deserialize_json_input(args)
         # "a" for async methods
-        requests = Requests()
-        if self.token:
-            requests.headers = {hdrs.AUTHORIZATION: f"Bearer {self.token}"}
+        requests = Requests() if self.plugin_auth is None else Requests(headers={hdrs.AUTHORIZATION: self.plugin_auth})
         method = getattr(requests, "a" + self.operation.method.value)
         print(f"Request args: {request_args}")
         async with method(**request_args) as response:

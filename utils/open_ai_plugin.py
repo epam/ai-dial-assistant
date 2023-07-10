@@ -6,6 +6,8 @@ from langchain.tools import OpenAPISpec
 from pydantic import BaseModel, parse_obj_as
 from starlette.status import HTTP_401_UNAUTHORIZED
 
+from utils.addon_token_source import AddonTokenSource
+
 
 class AuthConf(BaseModel):
     type: str
@@ -34,27 +36,26 @@ class AIPluginConf(BaseModel):
 class OpenAIPluginInfo(BaseModel):
     ai_plugin: AIPluginConf
     open_api: OpenAPISpec
-    token: str | None
+    auth: str | None
 
 
-def get_plugin_token(auth_type: str, addon: dict[str, str], user: str | None) -> str | None:
+def get_plugin_auth(auth_type: str, url: str, token_source: AddonTokenSource) -> str | None:
     if auth_type == 'none':
-        return user
+        return token_source.default_auth
 
     if auth_type == 'service_http':
-        service_token = addon.get("token")
+        service_token = token_source.get_token(url)
         if service_token is None:
-            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail=f'Missing token for {addon["url"]}')
+            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail=f'Missing token for {url}')
 
-        return service_token
+        return f"Bearer {service_token}"
 
     raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail=f'Unknown auth type {auth_type}')
 
 
-async def get_open_ai_plugin_info(addon: dict[str, str], user: str | None) -> OpenAIPluginInfo:
+async def get_open_ai_plugin_info(addon_url: str, token_source: AddonTokenSource) -> OpenAIPluginInfo:
     """Takes url pointing to .well-known/ai-plugin.json file"""
     requests = Requests()
-    addon_url = addon["url"]
     print(f"Fetching plugin info from {addon_url}")
     ai_plugin = await _parse_ai_plugin_conf(requests, addon_url)
     # Resolve relative url
@@ -62,9 +63,9 @@ async def get_open_ai_plugin_info(addon: dict[str, str], user: str | None) -> Op
     print(f"Fetching plugin spec from {ai_plugin.api.url}")
     open_api = await _parse_openapi_spec(requests, ai_plugin.api.url)
 
-    addon_token = get_plugin_token(ai_plugin.auth.type, addon, user)
+    addon_auth = get_plugin_auth(ai_plugin.auth.type, addon_url, token_source)
 
-    return OpenAIPluginInfo(ai_plugin=ai_plugin, open_api=open_api, token=addon_token)
+    return OpenAIPluginInfo(ai_plugin=ai_plugin, open_api=open_api, auth=addon_auth)
 
 
 async def _parse_ai_plugin_conf(requests: Requests, url: str) -> AIPluginConf:
