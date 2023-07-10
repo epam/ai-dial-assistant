@@ -10,9 +10,7 @@ from aiohttp import hdrs
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from langchain.chat_models import ChatOpenAI
-from starlette.datastructures import Headers
 from starlette.responses import Response
-from starlette.status import HTTP_401_UNAUTHORIZED
 
 from chains.command_chain import CommandChain
 from chains.model_client import ModelClient
@@ -32,7 +30,7 @@ from utils.state import parse_history
 app = FastAPI()
 
 
-def create_chunk(response_id: str, timestamp: float, choice: dict[str, Any]):
+def create_chunk(response_id: str, timestamp: int, choice: dict[str, Any]):
     return (
         "data: "
         + json.dumps(
@@ -100,7 +98,7 @@ async def process_request(
 
     history = parse_history(messages, plugin_descriptions)
     response_id = str(uuid.uuid4())
-    timestamp = time.time()
+    timestamp = int(time.time())
 
     chain = CommandChain(
         model_client=ModelClient(model=model),
