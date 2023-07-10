@@ -1,4 +1,4 @@
 model_name: gpt-4
 temperature: 0.0
 request_timeout: 120
-openai_api_base: https://openai-proxy-mr-12.staging.deltixhub.io
+openai_api_base: http://dial-proxy.dial-proxy
