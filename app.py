@@ -36,7 +36,7 @@ def create_chunk(response_id: str, timestamp: int, choice: dict[str, Any]):
         + json.dumps(
             {
                 "id": response_id,
-                "object": "chat.completion",
+                "object": "chat.completion.chunk",
                 "created": timestamp,
                 "choices": [{"index": 0} | choice]
             }
