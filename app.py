@@ -49,7 +49,7 @@ def get_request_args(payload: dict, api_version: str | None, user_auth: str | No
     args = {
         "model_name": payload.get("model"),
         "temperature": payload.get("temperature"),
-        "max_tokens": payload.get("max_tokens"),
+        # "max_tokens": payload.get("max_tokens"), ignore tokens for now, it's tricky to calculate
         "stop": payload.get("stop"),
         "openai_api_version": api_version,
         "user": payload.get("user"),
