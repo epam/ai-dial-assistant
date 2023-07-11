@@ -114,7 +114,7 @@ async def process_request(
             item = await callback.queue.get()
             if item is None:
                 yield create_chunk(response_id, timestamp, {"delta": {}, "finish_reason": "stop"})
-                yield "data: [DONE]\n"
+                yield "data: [DONE]\n\n"
                 break
 
             yield create_chunk(response_id, timestamp, {"delta": item})
