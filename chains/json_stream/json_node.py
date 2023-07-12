@@ -8,7 +8,7 @@ from chains.json_stream.tokenator import Tokenator
 
 
 def unexpected_symbol_error(char: str, char_position: int) -> ValueError:
-    return ValueError(f"Error parsing json string: unexpected symbol {char} at {char_position}")
+    return ValueError(f"Error parsing json string: unexpected symbol {char} at position {char_position}")
 
 
 class NodeResolver(ABC):
