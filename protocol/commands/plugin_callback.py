@@ -32,7 +32,7 @@ class PluginCommandCallback(CommandCallback):
 
     @override
     async def on_error(self, error: Exception):
-        await self.callback(f"\n```\n```\n**Error:** {str(error)}\n```\n")
+        await self.callback(f"\n```\n```\nError: {str(error)}\n```\n")
 
 
 class PluginResultCallback(ResultCallback):
