@@ -61,8 +61,12 @@ class JsonRoot(ComplexNode):
         return "root"
 
     async def parse(self, stream: Tokenator, dependency_resolver: NodeResolver):
-        self._node = await dependency_resolver.resolve(stream)
-        self._event.set()
+        try:
+            self._node = await dependency_resolver.resolve(stream)
+        except BaseException as e:
+            self._node = e
+        finally:
+            self._event.set()
 
     async def to_string_tokens(self) -> AsyncIterator[str]:
         node = await self.node()

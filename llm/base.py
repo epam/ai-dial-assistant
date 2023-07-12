@@ -19,9 +19,7 @@ def create_openai_chat(openai_conf: OpenAIConf, openai_api_key: str) -> ChatOpen
 
 
 def create_azure_chat(args: dict[str, Any], openai_api_key: str) -> ChatOpenAI:
-    # callbacks: Optional[List[BaseCallbackHandler]] = (
-    #     [CallbackWithNewLines()]
-    # )
+    # callbacks = [CallbackWithNewLines()]
 
     openai.log = LogLevel.INFO
 
