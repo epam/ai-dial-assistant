@@ -3,11 +3,13 @@ from typing import Any
 
 from typing_extensions import override
 
+from chains.callbacks.arg_callback import ArgCallback
 from chains.callbacks.args_callback import ArgsCallback
 from chains.callbacks.chain_callback import ChainCallback
 from chains.callbacks.command_callback import CommandCallback
 from chains.callbacks.result_callback import ResultCallback
 from protocol.commands.base import ExecutionCallback
+from protocol.commands.run_plugin import RunPlugin
 from utils.state import OpenAIRole, MessageField, CustomContentField, CommonField, StateField, StageField, StageStatus
 
 
@@ -23,14 +25,50 @@ def state(index: int, content: dict[str, Any]):
     return custom_content({CustomContentField.STATE: {StateField.INVOCATIONS: [{CommonField.INDEX: index} | content]}})
 
 
+class PluginNameArgCallback(ArgCallback):
+    def __init__(self, execution_callback: ExecutionCallback):
+        super().__init__(0, execution_callback)
+
+    @override
+    async def on_arg(self, token: str):
+        token = token.replace('"', '')
+        if len(token) > 0:
+            await self.callback(token)
+
+    @override
+    async def on_arg_end(self):
+        await self.callback('(')
+
+
+class RunPluginArgsCallback(ArgsCallback):
+    def __init__(self, execution_callback: ExecutionCallback):
+        super().__init__(execution_callback)
+
+    @override
+    async def on_args_start(self):
+        pass
+
+    @override
+    def arg_callback(self) -> ArgCallback:
+        self.arg_index += 1
+        if self.arg_index == 0:
+            return PluginNameArgCallback(self.callback)
+        else:
+            return ArgCallback(self.arg_index - 1, self.callback)
+
+
 class ServerCommandCallback(CommandCallback):
     def __init__(self, command_index: int, queue: Queue[Any]):
         self.command_index = command_index
         self.queue = queue
+        self._args_callback = ArgsCallback(ExecutionCallback(self._on_stage_name))
 
     @override
     async def on_command(self, command: str):
-        await self._on_stage_name(command)
+        if command == RunPlugin.token():
+            self._args_callback = RunPluginArgsCallback(ExecutionCallback(self._on_stage_name))
+        else:
+            await self._on_stage_name(command)
 
     @override
     def execution_callback(self) -> ExecutionCallback:
@@ -38,7 +76,7 @@ class ServerCommandCallback(CommandCallback):
 
     @override
     def args_callback(self) -> ArgsCallback:
-        return ArgsCallback(ExecutionCallback(self._on_stage_name))
+        return self._args_callback
 
     @override
     async def on_result(self, response):
