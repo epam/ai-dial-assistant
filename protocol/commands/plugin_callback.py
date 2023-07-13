@@ -1,5 +1,3 @@
-import json
-
 from typing_extensions import override
 
 from chains.callbacks.args_callback import ArgsCallback

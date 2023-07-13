@@ -10,7 +10,7 @@ from aiohttp import hdrs
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from langchain.chat_models import ChatOpenAI
-from starlette.responses import Response
+from starlette.responses import Response, FileResponse
 
 from chains.command_chain import CommandChain
 from chains.model_client import ModelClient
@@ -122,6 +122,11 @@ async def process_request(
         await producer
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.get("/{plugin}/.well-known/{filename}")
+def read_file(plugin: str, filename: str):
+    return FileResponse(f"{plugin}/.well-known/{filename}")
 
 
 if __name__ == "__main__":
