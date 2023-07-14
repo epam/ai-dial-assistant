@@ -59,11 +59,8 @@ def get_request_args(payload: dict, api_version: str | None, user_auth: str | No
     return {k: v for k, v in args.items() if v is not None}
 
 
-@app.post("/openai/deployments/{service_name}/chat/completions")
-async def azure(service_name: str, request: Request) -> Response:
-    if service_name != "assistant":
-        raise HTTPException(status_code=404)
-
+@app.post("/openai/deployments/assistant/chat/completions")
+async def assistant(request: Request) -> Response:
     args = parse_args()
     data = await request.json()
     user_auth = request.headers.get(hdrs.AUTHORIZATION)
@@ -116,6 +113,9 @@ async def process_request(
                 yield create_chunk(response_id, timestamp, {"delta": {}, "finish_reason": "stop"})
                 yield "data: [DONE]\n\n"
                 break
+
+            if isinstance(item, BaseException):
+                raise item
 
             yield create_chunk(response_id, timestamp, {"delta": item})
 

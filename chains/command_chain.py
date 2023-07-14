@@ -34,6 +34,7 @@ class TextCollector(AsyncIterator[str]):
 
 
 MAX_MESSAGE_COUNT = 20
+MAX_RETRY_COUNT = 3
 
 
 class CommandChain:
@@ -59,10 +60,12 @@ class CommandChain:
 
         await callback.on_start()
         message_count = 0
+        retry_count = 0
         while True:
             if message_count >= MAX_MESSAGE_COUNT:
+                error = Exception(f"Max message count of {MAX_MESSAGE_COUNT} exceeded")
                 await callback.on_end()
-                raise Exception(f"Max message count of {MAX_MESSAGE_COUNT} exceeded")
+                raise error
             message_count += 1
 
             token_stream = TextCollector(self.model_client.agenerate(history))
@@ -98,7 +101,13 @@ class CommandChain:
                 history.append(self._print(self.resp_prompt.format(responses=response_text)))
 
                 await callback.on_state(token_stream.buffer, response_text)
+                retry_count = 0
             except Exception as e:
+                retry_count += 1
+                if retry_count > MAX_RETRY_COUNT:
+                    await callback.on_end(e)
+                    raise e
+
                 print_exception()
                 await callback.on_error(e)
 

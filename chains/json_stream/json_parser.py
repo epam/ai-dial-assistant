@@ -10,6 +10,7 @@ from chains.json_stream.json_root import JsonRoot, RootNodeResolver
 from chains.json_stream.json_string import JsonString
 from chains.json_stream.parsing_context import ParsingContext
 from chains.json_stream.tokenator import Tokenator
+from utils.printing import print_exception
 
 
 def array_node(node: JsonNode) -> JsonArray:
@@ -48,10 +49,9 @@ class JsonParser:
             node = await root.node()
             if isinstance(node, ComplexNode):
                 await node.parse(stream, node_resolver)
+        except BaseException as e:
+            print(f"Exception while parsing json: {str(e)}")
         finally:
-            await JsonParser._drain_stream(stream)
-
-    @staticmethod
-    async def _drain_stream(stream: Tokenator):
-        async for _ in stream:
-            pass
+            # drain the stream to fill up the buffer
+            async for _ in stream:
+                pass
