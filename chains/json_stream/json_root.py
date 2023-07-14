@@ -46,7 +46,7 @@ class RootNodeResolver(NodeResolver):
 class JsonRoot(ComplexNode):
     def __init__(self):
         super().__init__(0)
-        self._node: JsonNode | Exception | None = None
+        self._node: JsonNode | BaseException | None = None
         self._event = asyncio.Event()
 
     async def node(self) -> JsonNode:
