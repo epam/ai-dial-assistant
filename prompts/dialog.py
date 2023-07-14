@@ -28,7 +28,7 @@ or if contract is violated:
 """.strip()
 
 system_template = """
-Act as a helpful assistant. Your training data goes up until September 2021.
+Your training data goes up until September 2021.
 Today is {{today_date}}.
 
 {%- if system_prefix %}
