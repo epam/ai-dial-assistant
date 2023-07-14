@@ -70,7 +70,7 @@ async def assistant(request: Request) -> Response:
 
     addons = [addon["url"] for addon in data.get("addons", [])]
     token_source = AddonTokenSource(request.headers, addons)
-    return await process_request(model, args.openai_conf.buffer_size, data["messages"], addons, token_source)
+    return await process_request(model, args.chat_conf.buffer_size, data["messages"], addons, token_source)
 
 
 @app.get("/healthcheck/status200")
@@ -93,7 +93,7 @@ async def process_request(
             info.open_api.info.description, info.ai_plugin.description_for_human)
 
     command_dict: CommandDict = {
-        RunPlugin.token(): lambda: RunPlugin(model, tools),
+        RunPlugin.token(): lambda: RunPlugin(model, tools, buffer_size),
         SayOrAsk.token(): EndDialog,
     }
 

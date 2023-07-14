@@ -1,1 +1,2 @@
 streaming: true
+buffer_size: 10000000

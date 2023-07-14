@@ -20,11 +20,11 @@ class OpenAIConf(BaseModel):
     temperature: float = 0.0
     request_timeout: int = 10
     openai_api_base: str
-    buffer_size: int
 
 
 class ChatConf(BaseModel):
     streaming: bool = True
+    buffer_size: int
 
 
 class CommandConf(BaseModel):

@@ -11,7 +11,7 @@ from utils.open_ai import get_openai_key
 async def main():
     args = parse_args("..")
     model = create_openai_chat(args.openai_conf, get_openai_key())
-    model_client = ModelClient(model=model, buffer_size=args.openai_conf.buffer_size)
+    model_client = ModelClient(model=model, buffer_size=args.chat_conf.buffer_size)
     tokens = model_client.agenerate([HumanMessage(content="Hello")])
     async for token in tokens:
         print(token, end="")
