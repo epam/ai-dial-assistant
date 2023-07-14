@@ -7,7 +7,7 @@ from typing import Any
 
 import uvicorn
 from aiohttp import hdrs
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from langchain.chat_models import ChatOpenAI
 from starlette.responses import Response, FileResponse
@@ -70,7 +70,7 @@ async def assistant(request: Request) -> Response:
 
     addons = [addon["url"] for addon in data.get("addons", [])]
     token_source = AddonTokenSource(request.headers, addons)
-    return await process_request(model, data["messages"], addons, token_source)
+    return await process_request(model, args.openai_conf.buffer_size, data["messages"], addons, token_source)
 
 
 @app.get("/healthcheck/status200")
@@ -79,7 +79,11 @@ def status200() -> Response:
 
 
 async def process_request(
-        model: ChatOpenAI, messages: list[Any], addons: list[str], token_source: AddonTokenSource) -> Response:
+        model: ChatOpenAI,
+        buffer_size: int,
+        messages: list[Any],
+        addons: list[str],
+        token_source: AddonTokenSource) -> Response:
     tools: dict[str, OpenAIPluginInfo] = {}
     plugin_descriptions: dict[str, str] = {}
     for addon in addons:
@@ -98,7 +102,7 @@ async def process_request(
     timestamp = int(time.time())
 
     chain = CommandChain(
-        model_client=ModelClient(model=model),
+        model_client=ModelClient(model=model, buffer_size=buffer_size),
         name="SERVER",
         resp_prompt=RESP_DIALOG_PROMPT,
         ctx=ExecutionContext(command_dict),

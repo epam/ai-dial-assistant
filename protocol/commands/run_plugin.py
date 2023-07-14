@@ -112,7 +112,7 @@ class RunPlugin(Command):
         ]
 
         chat = CommandChain(
-            model_client=ModelClient(model=model),
+            model_client=ModelClient(model=model, buffer_size=args.openai_conf.buffer_size),
             name="PLUGIN:" + name,
             resp_prompt=RESP_DIALOG_PROMPT,
             ctx=ExecutionContext(command_dict),
