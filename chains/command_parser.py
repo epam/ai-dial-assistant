@@ -24,10 +24,10 @@ class CommandParser:
         try:
             args = await self.node.get("args")
             # HACK: model not always passes args as an array
-            if isinstance(args, JsonObject):
-                yield args
-            else:
+            if isinstance(args, JsonArray):
                 async for arg in array_node(args):
                     yield arg
+            else:
+                yield args
         except Exception as e:
             raise Exception(f"Cannot parse command args array: {e}")
