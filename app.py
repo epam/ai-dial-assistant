@@ -3,6 +3,7 @@ import asyncio
 import json
 import time
 import uuid
+from collections.abc import Iterator, AsyncIterator
 from typing import Any
 
 import uvicorn
@@ -10,7 +11,7 @@ from aiohttp import hdrs
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from langchain.chat_models import ChatOpenAI
-from starlette.responses import Response, FileResponse
+from starlette.responses import Response, FileResponse, JSONResponse
 
 from chains.command_chain import CommandChain
 from chains.model_client import ModelClient
@@ -23,6 +24,7 @@ from protocol.commands.say_or_ask import SayOrAsk
 from protocol.execution_context import CommandDict, ExecutionContext
 from server_callback import ServerChainCallback
 from utils.addon_token_source import AddonTokenSource
+from utils.open_ai import merge
 from utils.open_ai_plugin import get_open_ai_plugin_info, OpenAIPluginInfo
 from utils.optional import or_else
 from utils.state import parse_history
@@ -66,11 +68,14 @@ async def assistant(request: Request) -> Response:
     user_auth = request.headers.get(hdrs.AUTHORIZATION)
     chat_args = args.openai_conf.dict() | get_request_args(data, request.query_params.get("api-version"), user_auth)
 
-    model = create_azure_chat(chat_args, request.headers["api-key"])
+    model = ModelClient(
+        model=create_azure_chat(chat_args, request.headers["api-key"]),
+        buffer_size=args.chat_conf.buffer_size)
 
     addons = [addon["url"] for addon in data.get("addons", [])]
     token_source = AddonTokenSource(request.headers, addons)
-    return await process_request(model, args.chat_conf.buffer_size, data["messages"], addons, token_source)
+    response_builder = stream_response if data.get("stream") else plain_response
+    return await response_builder(process_request(model, data["messages"], addons, token_source))
 
 
 @app.get("/healthcheck/status200")
@@ -79,11 +84,10 @@ def status200() -> Response:
 
 
 async def process_request(
-        model: ChatOpenAI,
-        buffer_size: int,
+        model_client: ModelClient,
         messages: list[Any],
         addons: list[str],
-        token_source: AddonTokenSource) -> Response:
+        token_source: AddonTokenSource) -> AsyncIterator[Any]:
     tools: dict[str, OpenAIPluginInfo] = {}
     plugin_descriptions: dict[str, str] = {}
     for addon in addons:
@@ -93,38 +97,58 @@ async def process_request(
             info.open_api.info.description, info.ai_plugin.description_for_human)
 
     command_dict: CommandDict = {
-        RunPlugin.token(): lambda: RunPlugin(model, tools, buffer_size),
+        RunPlugin.token(): lambda: RunPlugin(model_client, tools),
         SayOrAsk.token(): EndDialog,
     }
 
     history = parse_history(messages, plugin_descriptions)
-    response_id = str(uuid.uuid4())
-    timestamp = int(time.time())
-
     chain = CommandChain(
-        model_client=ModelClient(model=model, buffer_size=buffer_size),
+        model_client=model_client,
         name="SERVER",
         resp_prompt=RESP_DIALOG_PROMPT,
         ctx=ExecutionContext(command_dict),
     )
 
-    async def event_stream():
-        callback = ServerChainCallback()
-        try:
-            async with asyncio.TaskGroup() as tg:
-                tg.create_task(chain.run_chat(history, callback))
-                while True:
-                    item = await callback.queue.get()
-                    if item is None:
-                        yield create_chunk(response_id, timestamp, {"delta": {}, "finish_reason": "stop"})
-                        yield "data: [DONE]\n\n"
-                        break
+    callback = ServerChainCallback()
+    try:
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(chain.run_chat(history, callback))
+            while True:
+                item = await callback.queue.get()
+                if item is None:
+                    break
 
-                    yield create_chunk(response_id, timestamp, {"delta": item})
-        except ExceptionGroup as e:
-            raise e.exceptions[0]
+                yield item
+    except ExceptionGroup as e:
+        raise e.exceptions[0]
+
+
+async def stream_response(chunks: AsyncIterator[Any]) -> Response:
+    async def event_stream():
+        response_id = str(uuid.uuid4())
+        timestamp = int(time.time())
+
+        async for chunk in chunks:
+            yield create_chunk(response_id, timestamp, {"delta": chunk})
+
+        yield create_chunk(response_id, timestamp, {"delta": {}, "finish_reason": "stop"})
+        yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+async def plain_response(chunks: AsyncIterator[Any]) -> Response:
+    choice = {}
+    async for chunk in chunks:
+        choice = merge(choice, chunk)
+
+    return JSONResponse({
+        "id": str(uuid.uuid4()),
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "choices": [{"index": 0} | choice],
+        "finish_reason": "stop"
+    })
 
 
 @app.get("/{plugin}/.well-known/{filename}")

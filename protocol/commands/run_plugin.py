@@ -30,10 +30,9 @@ from utils.printing import print_exception
 
 
 class RunPlugin(Command):
-    def __init__(self, model: ChatOpenAI,  plugins: dict[str, OpenAIPluginInfo], buffer_size):
-        self.model = model
+    def __init__(self, model_client: ModelClient, plugins: dict[str, OpenAIPluginInfo]):
+        self.model_client = model_client
         self.plugins = plugins
-        self.buffer_size = buffer_size
 
     @staticmethod
     def token():
@@ -54,8 +53,7 @@ class RunPlugin(Command):
 
         # 1. Using plugin prompt approach + abbreviated endpoints
         system_prefix, commands = await RunPlugin._process_plugin_open_ai_typescript_commands(plugin)
-        return await RunPlugin._run_plugin(
-            name, query, system_prefix, commands, self.model, execution_callback, self.buffer_size)
+        return await RunPlugin._run_plugin(name, query, system_prefix, commands, self.model_client, execution_callback)
 
         # 2. Using custom prompt borrowed from LangChain
         # return self._process_plugin_open_ai_typescript(plugin)
@@ -97,9 +95,8 @@ class RunPlugin(Command):
             query: str,
             system_prefix: str,
             commands: dict[str, CommandConf],
-            model: ChatOpenAI,
-            execution_callback: ExecutionCallback,
-            buffer_size: int
+            model_client: ModelClient,
+            execution_callback: ExecutionCallback
     ) -> ResultObject:
         command_dict: CommandDict = {EndDialog.token(): EndDialog}
 
@@ -115,7 +112,7 @@ class RunPlugin(Command):
         ]
 
         chat = CommandChain(
-            model_client=ModelClient(model=model, buffer_size=buffer_size),
+            model_client=model_client,
             name="PLUGIN:" + name,
             resp_prompt=RESP_DIALOG_PROMPT,
             ctx=ExecutionContext(command_dict),

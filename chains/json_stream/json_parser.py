@@ -48,6 +48,6 @@ class JsonParser:
         except BaseException as e:
             print(f"Exception while parsing json: {str(e)}")
         finally:
-            # drain the stream to fill up the buffer
+            # flush the stream
             async for _ in stream:
                 pass
