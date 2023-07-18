@@ -14,7 +14,7 @@ class ChainCallback:
         """Returns a callback for reporting a command"""
         return CommandCallback()
 
-    async def on_end(self, error: Exception | None = None):
+    async def on_end(self):
         """Called when the chain ends"""
 
     async def on_state(self, request: str, response: str):
@@ -24,5 +24,5 @@ class ChainCallback:
         """Returns a callback for reporting a result"""
         return ResultCallback()
 
-    async def on_error(self, error: Exception):
+    async def on_error(self, title: str, error: Exception):
         """Called when an error occurs"""

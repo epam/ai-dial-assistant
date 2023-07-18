@@ -130,17 +130,17 @@ class ServerChainCallback(ChainCallback):
         return ServerResultCallback(self.queue)
 
     @override
-    async def on_end(self, e: Exception | None = None):
-        await self.queue.put(e)
+    async def on_end(self):
+        await self.queue.put(None)
 
     @override
-    async def on_error(self, error: Exception):
+    async def on_error(self, title: str, error: Exception):
         self.stage_index += 1
         await self.queue.put(
             stage(
                 self.stage_index,
                 {
-                    StageField.NAME: "Error",
+                    StageField.NAME: title,
                     CommonField.CONTENT: f"Error: {str(error)}\n",
                     StageField.STATUS: StageStatus.FAILED
                 }))

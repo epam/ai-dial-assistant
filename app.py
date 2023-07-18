@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
+import asyncio
 import json
 import time
 import uuid
-from asyncio import create_task
 from typing import Any
 
 import uvicorn
@@ -110,20 +110,19 @@ async def process_request(
 
     async def event_stream():
         callback = ServerChainCallback()
-        producer = create_task(chain.run_chat(history, callback))
-        while True:
-            item = await callback.queue.get()
-            if item is None:
-                yield create_chunk(response_id, timestamp, {"delta": {}, "finish_reason": "stop"})
-                yield "data: [DONE]\n\n"
-                break
+        try:
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(chain.run_chat(history, callback))
+                while True:
+                    item = await callback.queue.get()
+                    if item is None:
+                        yield create_chunk(response_id, timestamp, {"delta": {}, "finish_reason": "stop"})
+                        yield "data: [DONE]\n\n"
+                        break
 
-            if isinstance(item, BaseException):
-                raise item
-
-            yield create_chunk(response_id, timestamp, {"delta": item})
-
-        await producer
+                    yield create_chunk(response_id, timestamp, {"delta": item})
+        except ExceptionGroup as e:
+            raise e.exceptions[0]
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
