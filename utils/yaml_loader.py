@@ -43,8 +43,9 @@ def construct_include(loader: Loader, node: yaml.Node) -> Any:
 def construct_env(loader: Loader, node: yaml.Node) -> Any:
     """Lookup environment variable referenced at node."""
 
-    name = loader.construct_yaml_str(node)
-    return get_env(name)
+    value = str(loader.construct_yaml_str(node))
+    name, default = value.split(":", 1) if ':' in value else (value, None)
+    return get_env(name, default)
 
 
 yaml.add_constructor("!include", construct_include, Loader)
