@@ -1,7 +1,7 @@
 image:
   pullPolicy: Always
   registry: registry-dev.deltixhub.com
-  repository: ai/dial/addon-framework
+  repository: ai/dial/assistant-service
   tag: development
   pullSecrets:
     - epm-rtc-registry-dev
@@ -10,6 +10,9 @@ fullnameOverride: "addon-framework"
 
 podAnnotations:
   autorestart: '{{ dateInZone "2006-01-02 15:04:05Z" (now) "UTC" }}'
+
+env:
+  OPENAI_API_BASE: "http://dial-proxy.dial-proxy"
 
 ingress:
   enabled: true

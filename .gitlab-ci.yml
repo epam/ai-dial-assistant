@@ -5,12 +5,12 @@ include:
     file: helm/helm-environment.gitlab-ci.yml
 
 variables:
-  DOCKER_PATH: "ai/dial/addon-framework"
+  DOCKER_PATH: "ai/dial/assistant-service"
   DOCKER_REGISTRY_SERVER: "registry-dev.deltixhub.com"
   HELM_REPO: https://nexus.deltixhub.com/repository/epm-rtc-helm
   SECRET_NAME: "epm-rtc-registry-dev"
-  CHART: "openai-bedrock-adapter" # Helm chart name, e.g. "gitlab-runner"
-  VERSION: "0.0.2" # Helm chart version
+  CHART: "dial-application" # Helm chart name, e.g. "gitlab-runner"
+  VERSION: "0.1.2" # Helm chart version
   NAMESPACE: "openai-addon-framework"
   HELM_EXTRA_ARGS: "-f ${HELM_SECRET_FILE}"
   RELEASE: ${CI_PROJECT_NAME}
