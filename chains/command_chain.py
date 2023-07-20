@@ -2,17 +2,18 @@ import json
 from typing import List, AsyncIterator, Any
 
 from langchain.prompts.chat import HumanMessagePromptTemplate
-from langchain.schema import AIMessage, BaseMessage
+from langchain.schema import AIMessage, BaseMessage, HumanMessage
 
 from chains.callbacks.chain_callback import ChainCallback
 from chains.callbacks.command_callback import CommandCallback
 from chains.callbacks.result_callback import ResultCallback
 from chains.json_stream.json_node import JsonNode
+from chains.json_stream.json_object import JsonObject
 from chains.json_stream.json_parser import JsonParser
 from chains.json_stream.json_string import JsonString
-from chains.json_stream.tokenator import Tokenator
+from chains.json_stream.tokenator import Tokenator, AsyncPeekable
 from chains.model_client import ModelClient
-from chains.request_parser import RequestParser
+from chains.request_reader import RequestReader
 from protocol.command_result import responses_to_text, CommandResult, Status
 from protocol.commands.base import FinalCommand, Command
 from protocol.execution_context import ExecutionContext
@@ -67,23 +68,29 @@ class CommandChain:
             message_count += 1
 
             token_stream = TextCollector(self.model_client.agenerate(history))
-            parsing_content = await JsonParser.parse(Tokenator(token_stream))
+            tokenator = Tokenator(token_stream)
+            await CommandChain._skip_text(tokenator)
+            parsing_content = await JsonParser.parse(tokenator)
 
             try:
                 responses: List[CommandResult] = []
-                request_parser = RequestParser(await parsing_content.root.node())
-                async for invocation in request_parser.parse_invocations():
+                root_node = await parsing_content.root.node()
+                request_reader = RequestReader(root_node)
+                final_command_name = None
+                async for invocation in request_reader.parse_invocations():
                     command_name = await invocation.parse_name()
                     command = self.ctx.create_command(command_name)
                     args = invocation.parse_args()
                     if isinstance(command, FinalCommand):
+                        final_command_name = command_name
+                        if len(responses) > 0:
+                            continue
                         arg = await anext(args)
                         result = await CommandChain._to_result(
                             arg if isinstance(arg, JsonString) else arg.to_string_tokens(),  # type: ignore
                             callback.result_callback())
                         await callback.on_end()
-                        await parsing_content.finish_parsing()
-                        self._print(AIMessage(content=token_stream.buffer))
+                        self._print(AIMessage(content=json.dumps(root_node.value())))
                         return result
                     else:
                         response = await CommandChain._execute_command(
@@ -91,14 +98,23 @@ class CommandChain:
 
                         responses.append(response)
 
-                await parsing_content.finish_parsing()
+                if len(responses) == 0:
+                    # Assume the model has nothing to say
+                    await callback.on_end()
+                    self._print(AIMessage(content=json.dumps(root_node.value())))
+                    return ""
 
-                history.append(self._print(AIMessage(content=token_stream.buffer)))
+                fixed_model_response = json.dumps({
+                    # Remove final command when it's generated before the result is known to the model
+                    "commands": [c for c in root_node.value()["commands"] if c["command"] != final_command_name]
+                })
+
+                history.append(self._print(AIMessage(content=fixed_model_response)))
 
                 response_text = responses_to_text(responses)
                 history.append(self._print(self.resp_prompt.format(responses=response_text)))
 
-                await callback.on_state(token_stream.buffer, response_text)
+                await callback.on_state(fixed_model_response, response_text)
                 retry_count = 0
             except Exception as e:
                 print_exception()
@@ -109,8 +125,10 @@ class CommandChain:
                     raise e
 
                 await parsing_content.finish_parsing()
-                history.append(self._print(AIMessage(content=token_stream.buffer)))
-                history.append(self._print(self.resp_prompt.format(responses=json.dumps({"error": str(e)}))))
+
+                if token_stream.buffer:
+                    history.append(self._print(AIMessage(content=token_stream.buffer)))
+                    history.append(self._print(self.resp_prompt.format(responses=json.dumps({"error": str(e)}))))
 
     @staticmethod
     async def _to_args(args: AsyncIterator[JsonNode], callback: CommandCallback) -> AsyncIterator[Any]:
@@ -151,3 +169,15 @@ class CommandChain:
             print_exception()
             await callback.on_error(e)
             return {"status": Status.ERROR, "response": str(e)}
+
+    @staticmethod
+    async def _skip_text(stream: AsyncPeekable[str]):
+        try:
+            while True:
+                char = await stream.apeek()
+                if char == JsonObject.token():
+                    break
+
+                await anext(stream)
+        except StopAsyncIteration:
+            pass

@@ -1,5 +1,4 @@
 import json
-from typing import AsyncIterator
 
 from typing_extensions import override
 

@@ -1,5 +1,5 @@
 import asyncio
-from typing import AsyncIterator
+from typing import AsyncIterator, Any
 
 from typing_extensions import override
 
@@ -43,7 +43,7 @@ class RootNodeResolver(NodeResolver):
         raise unexpected_symbol_error(char, stream.char_position)
 
 
-class JsonRoot(ComplexNode):
+class JsonRoot(ComplexNode[Any]):
     def __init__(self):
         super().__init__(0)
         self._node: JsonNode | BaseException | None = None
@@ -57,9 +57,11 @@ class JsonRoot(ComplexNode):
 
         return ComplexNode.throw_if_exception(self._node)
 
+    @override
     def type(self) -> str:
         return "root"
 
+    @override
     async def parse(self, stream: Tokenator, dependency_resolver: NodeResolver):
         try:
             self._node = await dependency_resolver.resolve(stream)
@@ -68,9 +70,12 @@ class JsonRoot(ComplexNode):
         finally:
             self._event.set()
 
+    @override
     async def to_string_tokens(self) -> AsyncIterator[str]:
         node = await self.node()
         async for token in node.to_string_tokens():  # type: ignore
             yield token
 
-
+    @override
+    def value(self) -> Any:
+        return self._node.value()

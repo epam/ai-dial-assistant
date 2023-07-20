@@ -12,11 +12,11 @@ from chains.json_stream.tokenator import Tokenator
 from utils.text import join_string
 
 
-class JsonObject(ComplexNode, AsyncIterator[Tuple[str, JsonNode]]):
+class JsonObject(ComplexNode[dict[str, Any]], AsyncIterator[Tuple[str, JsonNode]]):
     def __init__(self, char_position: int):
         super().__init__(char_position)
         self.listener = Queue[Tuple[str, JsonNode] | None | BaseException]()
-        self.object: dict[str, Any] = {}
+        self._object: dict[str, JsonNode] = {}
 
     @override
     def type(self) -> str:
@@ -27,22 +27,22 @@ class JsonObject(ComplexNode, AsyncIterator[Tuple[str, JsonNode]]):
 
     @override
     async def __anext__(self) -> Tuple[str, JsonNode]:
-        result = await self.listener.get()
+        result = ComplexNode.throw_if_exception(await self.listener.get())
         if result is None:
             raise StopAsyncIteration
 
-        return ComplexNode.throw_if_exception(result)
+        self._object[result[0]] = result[1]
+        return result
 
     @staticmethod
     def token() -> str:
         return '{'
 
     async def get(self, key: str) -> JsonNode:
-        if key in self.object.keys():
-            return self.object[key]
+        if key in self._object.keys():
+            return self._object[key]
 
         async for k, v in self:
-            self.object[k] = v
             if k == key:
                 return v
 
@@ -104,3 +104,7 @@ class JsonObject(ComplexNode, AsyncIterator[Tuple[str, JsonNode]]):
                 yield token
             separate = True
         yield '}'
+
+    @override
+    def value(self) -> dict[str, Any]:
+        return {k: v.value() for k, v in self._object.items()}

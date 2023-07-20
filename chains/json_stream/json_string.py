@@ -8,10 +8,11 @@ from chains.json_stream.json_node import NodeResolver, ComplexNode, unexpected_s
 from chains.json_stream.tokenator import Tokenator
 
 
-class JsonString(ComplexNode, AsyncIterator[str]):
+class JsonString(ComplexNode[str], AsyncIterator[str]):
     def __init__(self, char_position: int):
         super().__init__(char_position)
-        self.listener = Queue[str | None | BaseException]()
+        self._listener = Queue[str | None | BaseException]()
+        self._buffer = ""
 
     @override
     def type(self) -> str:
@@ -26,20 +27,21 @@ class JsonString(ComplexNode, AsyncIterator[str]):
 
     @override
     async def __anext__(self) -> str:
-        result = await self.listener.get()
+        result = ComplexNode.throw_if_exception(await self._listener.get())
         if result is None:
             raise StopAsyncIteration
 
-        return ComplexNode.throw_if_exception(result)
+        self._buffer += result
+        return result
 
     @override
     async def parse(self, stream: Tokenator, dependency_resolver: NodeResolver):
         try:
             async for token in JsonString.read(stream):
-                await self.listener.put(token)
-            await self.listener.put(None)
+                await self._listener.put(token)
+            await self._listener.put(None)
         except BaseException as e:
-            await self.listener.put(e)
+            await self._listener.put(e)
 
     @override
     async def to_string_tokens(self) -> AsyncIterator[str]:
@@ -50,24 +52,27 @@ class JsonString(ComplexNode, AsyncIterator[str]):
 
     @staticmethod
     async def read(stream: Tokenator) -> AsyncIterator[str]:
-        char = await anext(stream)
-        if not char == JsonString.token():
-            raise unexpected_symbol_error(char, stream.char_position)
-        result = ""
-        token_position = stream.token_position
-        while True:
+        try:
             char = await anext(stream)
-            if char == JsonString.token():
-                break
+            if not char == JsonString.token():
+                raise unexpected_symbol_error(char, stream.char_position)
+            result = ""
+            token_position = stream.token_position
+            while True:
+                char = await anext(stream)
+                if char == JsonString.token():
+                    break
 
-            result += await JsonString.escape(stream) if char == '\\' else char
-            if token_position != stream.token_position:
+                result += await JsonString.escape(stream) if char == '\\' else char
+                if token_position != stream.token_position:
+                    yield result
+                    result = ""
+                    token_position = stream.token_position
+
+            if result:
                 yield result
-                result = ""
-                token_position = stream.token_position
-
-        if result:
-            yield result
+        except StopAsyncIteration:
+            pass
 
     @staticmethod
     async def escape(stream: Tokenator) -> str:
@@ -89,3 +94,7 @@ class JsonString(ComplexNode, AsyncIterator[str]):
             return '\t'
         else:
             raise ValueError(f"Unexpected escape sequence: \\{char}" + " at " + str(stream.char_position - 1))
+
+    @override
+    def value(self) -> str:
+        return self._buffer

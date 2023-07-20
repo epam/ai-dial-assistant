@@ -45,8 +45,6 @@ class JsonParser:
             node = await root.node()
             if isinstance(node, ComplexNode):
                 await node.parse(stream, node_resolver)
-        except BaseException as e:
-            print(f"Exception while parsing json: {str(e)}")
         finally:
             # flush the stream
             async for _ in stream:

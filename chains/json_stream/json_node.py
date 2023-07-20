@@ -17,7 +17,10 @@ class NodeResolver(ABC):
         pass
 
 
-class JsonNode(ABC):
+T = TypeVar('T')
+
+
+class JsonNode(ABC, Generic[T]):
     def __init__(self, char_position: int):
         self._char_position = char_position
 
@@ -33,8 +36,15 @@ class JsonNode(ABC):
     def char_position(self) -> int:
         return self._char_position
 
+    @abstractmethod
+    def value(self) -> T:
+        pass
 
-class ComplexNode(JsonNode, ABC):
+
+class ComplexNode(JsonNode[T], ABC, Generic[T]):
+    def __init__(self, char_position: int):
+        super().__init__(char_position)
+
     @abstractmethod
     async def parse(self, stream: Tokenator, dependency_resolver: NodeResolver):
         pass
@@ -42,7 +52,7 @@ class ComplexNode(JsonNode, ABC):
     @staticmethod
     def throw_if_exception(entry):
         if isinstance(entry, StopAsyncIteration):
-            raise Exception("Unexpected end of stream.")
+            raise Exception("Failed to parse json: unexpected end of stream.")
 
         if isinstance(entry, BaseException):
             raise entry
@@ -50,16 +60,9 @@ class ComplexNode(JsonNode, ABC):
         return entry
 
 
-T = TypeVar('T')
-
-
-class PrimitiveNode(JsonNode, ABC, Generic[T]):
+class PrimitiveNode(JsonNode[T], ABC, Generic[T]):
     @abstractmethod
     def raw_data(self) -> str:
-        pass
-
-    @abstractmethod
-    def value(self) -> T:
         pass
 
     @override

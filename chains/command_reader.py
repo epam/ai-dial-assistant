@@ -2,12 +2,11 @@ from collections.abc import AsyncIterator
 
 from chains.json_stream.json_array import JsonArray
 from chains.json_stream.json_node import JsonNode
-from chains.json_stream.json_object import JsonObject
 from chains.json_stream.json_parser import string_node, array_node, object_node
 from utils.text import join_string
 
 
-class CommandParser:
+class CommandReader:
     def __init__(self, node: JsonNode):
         try:
             self.node = object_node(node)

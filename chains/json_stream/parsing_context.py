@@ -13,5 +13,8 @@ class ParsingContext:
         return self._node
 
     async def finish_parsing(self):
-        await self._task
+        try:
+            await self._task
+        except Exception as e:
+            print(f"Parser error: {e}")
 

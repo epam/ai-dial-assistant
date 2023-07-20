@@ -1,5 +1,6 @@
 from asyncio import Queue
 from collections.abc import AsyncIterator
+from typing import Any
 
 from typing_extensions import override
 
@@ -8,10 +9,11 @@ from chains.json_stream.json_normalizer import JsonNormalizer
 from chains.json_stream.tokenator import Tokenator
 
 
-class JsonArray(ComplexNode, AsyncIterator[JsonNode]):
+class JsonArray(ComplexNode[list[Any]], AsyncIterator[JsonNode]):
     def __init__(self, char_position: int):
         super().__init__(char_position)
         self.listener = Queue[JsonNode | None | BaseException]()
+        self.array: list[JsonNode] = []
 
     @override
     def type(self) -> str:
@@ -27,11 +29,12 @@ class JsonArray(ComplexNode, AsyncIterator[JsonNode]):
 
     @override
     async def __anext__(self) -> JsonNode:
-        result = await self.listener.get()
+        result = ComplexNode.throw_if_exception(await self.listener.get())
         if result is None:
             raise StopAsyncIteration
 
-        return ComplexNode.throw_if_exception(result)
+        self.array.append(result)
+        return result
 
     @override
     async def parse(self, stream: Tokenator, dependency_resolver: NodeResolver):
@@ -77,3 +80,7 @@ class JsonArray(ComplexNode, AsyncIterator[JsonNode]):
                 yield token
             separate = True
         yield ']'
+
+    @override
+    def value(self) -> list[JsonNode]:
+        return [item.value() for item in self.array]
