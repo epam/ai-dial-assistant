@@ -1,7 +1,7 @@
 from typing import Tuple, List
 
 from jinja2 import Template
-from langchain.chat_models import ChatOpenAI
+from langchain.schema import HumanMessage
 from langchain.tools import APIOperation
 from typing_extensions import override
 
@@ -9,8 +9,6 @@ from chains.command_chain import CommandChain
 from chains.model_client import ModelClient
 from conf.project_conf import (
     CommandConf,
-    Conf,
-    PluginTool,
 )
 from open_api.operation_selector import (
     collect_operations,
@@ -20,13 +18,12 @@ from prompts.dialog import (
     RESP_DIALOG_PROMPT,
     open_api_plugin_template,
 )
-from protocol.commands.base import Command, ExecutionCallback, ResultObject, TextResult, JsonResult
-from protocol.commands.end_dialog import EndDialog
+from protocol.commands.base import Command, ExecutionCallback, ResultObject, JsonResult
+from protocol.commands.end_dialog import Reply
 from protocol.commands.open_api import OpenAPIChatCommand
 from protocol.commands.plugin_callback import PluginChainCallback
 from protocol.execution_context import CommandDict, ExecutionContext
 from utils.open_ai_plugin import OpenAIPluginInfo
-from utils.printing import print_exception
 
 
 class RunPlugin(Command):
@@ -98,17 +95,14 @@ class RunPlugin(Command):
             model_client: ModelClient,
             execution_callback: ExecutionCallback
     ) -> ResultObject:
-        command_dict: CommandDict = {EndDialog.token(): EndDialog}
+        command_dict: CommandDict = {Reply.token(): Reply}
 
         for name, command_spec in commands.items():
             command_dict[name] = command_spec.implementation
 
         init_messages = [
-            PLUGIN_SYSTEM_DIALOG_MESSAGE.format(
-                commands=commands,
-                system_prefix=system_prefix,
-                query=query,
-            )
+            PLUGIN_SYSTEM_DIALOG_MESSAGE.format(commands=commands, system_prefix=system_prefix),
+            HumanMessage(content=query)
         ]
 
         chat = CommandChain(
@@ -118,8 +112,4 @@ class RunPlugin(Command):
             ctx=ExecutionContext(command_dict),
         )
 
-        try:
-            return JsonResult(await chat.run_chat(init_messages, PluginChainCallback(execution_callback)))
-        except Exception as e:
-            print_exception()
-            return TextResult("ERROR: " + str(e))
+        return JsonResult(await chat.run_chat(init_messages, PluginChainCallback(execution_callback)))

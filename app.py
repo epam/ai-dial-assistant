@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 import asyncio
-import json
 import time
 import uuid
-from collections.abc import Iterator, AsyncIterator
+from collections.abc import AsyncIterator
 from typing import Any
 
 import uvicorn
 from aiohttp import hdrs
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
-from langchain.chat_models import ChatOpenAI
 from starlette.responses import Response, FileResponse, JSONResponse
 
 from chains.command_chain import CommandChain
@@ -18,33 +16,17 @@ from chains.model_client import ModelClient
 from cli.main_args import parse_args
 from llm.base import create_azure_chat
 from prompts.dialog import RESP_DIALOG_PROMPT
-from protocol.commands.end_dialog import EndDialog
+from protocol.commands.end_dialog import Reply
 from protocol.commands.run_plugin import RunPlugin
-from protocol.commands.say_or_ask import SayOrAsk
 from protocol.execution_context import CommandDict, ExecutionContext
 from server_callback import ServerChainCallback
 from utils.addon_token_source import AddonTokenSource
-from utils.open_ai import merge
+from utils.open_ai import merge, wrap_choice, wrap_error, wrap_chunk
 from utils.open_ai_plugin import get_open_ai_plugin_info, OpenAIPluginInfo
 from utils.optional import or_else
 from utils.state import parse_history
 
 app = FastAPI()
-
-
-def create_chunk(response_id: str, timestamp: int, choice: dict[str, Any]):
-    return (
-        "data: "
-        + json.dumps(
-            {
-                "id": response_id,
-                "object": "chat.completion.chunk",
-                "created": timestamp,
-                "choices": [{"index": 0} | choice]
-            }
-        )
-        + "\n\n"
-    )
 
 
 def get_request_args(payload: dict, api_version: str | None, user_auth: str | None) -> dict[str, str]:
@@ -98,7 +80,7 @@ async def process_request(
 
     command_dict: CommandDict = {
         RunPlugin.token(): lambda: RunPlugin(model_client, tools),
-        SayOrAsk.token(): EndDialog,
+        Reply.token(): Reply,
     }
 
     history = parse_history(messages, plugin_descriptions)
@@ -128,11 +110,15 @@ async def stream_response(chunks: AsyncIterator[Any]) -> Response:
         response_id = str(uuid.uuid4())
         timestamp = int(time.time())
 
-        async for chunk in chunks:
-            yield create_chunk(response_id, timestamp, {"delta": chunk})
+        try:
+            async for chunk in chunks:
+                yield wrap_choice(response_id, timestamp, {"delta": chunk})
 
-        yield create_chunk(response_id, timestamp, {"delta": {}, "finish_reason": "stop"})
-        yield "data: [DONE]\n\n"
+            yield wrap_choice(response_id, timestamp, {"delta": {}, "finish_reason": "stop"})
+        except Exception as e:
+            yield wrap_error(e)
+        finally:
+            yield wrap_chunk("[DONE]")
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

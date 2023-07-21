@@ -1,14 +1,11 @@
 import json
-from collections.abc import Callable, AsyncIterator
 from typing import Dict, List, NamedTuple, Optional
-from urllib.parse import urljoin
 
-from aiohttp import ClientResponse, hdrs
+from aiohttp import hdrs
 from langchain.requests import Requests
 from langchain.tools.openapi.utils.api_models import APIOperation
-from pydantic import Field
 
-from protocol.commands.base import ResultObject, ResultType, JsonResult, TextResult
+from protocol.commands.base import ResultObject, JsonResult, TextResult
 
 
 class _ParamMapping(NamedTuple):

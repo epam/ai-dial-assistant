@@ -14,137 +14,105 @@ def get_today_date():
 
 
 request_response = """
-You must always reply with a list of commands to execute:
-{ "commands": [COMMAND_1, COMMAND_2, ...] }
-
-The command responses are returned in the following format (single response per each command):
-{ "responses": [{
-    "id": RESPONSE_ID,
-    "status": SUCCESS|ERROR,
-    "response": RESPONSE
-}]}
-or if contract is violated:
-{ "error": ERROR_MESSAGE }
+ALWAYS reply with a JSON containing an array of available commands. You must not use natural language:
+{
+  "commands": [
+    {
+      "command": "<command name>",
+      "args": [
+        <array of arguments>
+      ]
+    }
+  ]
+}
 """.strip()
 
 system_template = """
-Your training data goes up until September 2021.
-Today is {{today_date}}.
+Your training data is up-to-date until September 2021.
+Today's date is {{today_date}}.
 
 {%- if system_prefix %}
+{{system_prefix}}
+{%- endif %}
 
-{{system_prefix}}{% endif %}
-
-The following list of commands is available to you to answer the user's questions:
+Protocol
+The following commands are available to reply to user or find out the answer to the user's question:
 {%- if tools %}
-* {"command": "run-plugin", "args": [NAME, QUERY]}
+> run-plugin
 The command runs a specified plugin to solve a one-shot task written in natural language.
 Plugins do not see current conversation and require all details to be provided in the query to solve the task.
-The command returns result of the plugin call.
-QUERY is a string formulating the query to the plugin.
-NAME must be one of the following plugins:
+The command returns the result of the plugin call.
+Arguments:
+ - NAME must be one of the following plugins:
 {%- for name, description in tools.items() %}
-    - {{name}}: {{description | decap}}
+    * {{name}}: {{description | decap}}
 {%- endfor %}
+ - QUERY is a string formulating the query to the plugin.
 {%- endif %}
-{%- for name, command in commands.items() %}
-* {"command": "{{name}}", "args": [{{ command.args | join(", ") }}]}
-{%- if command.description %}
-{{command.description}}{% endif %}
-{%- if command.result %}
-The command returns {{command.result | decap}}{% endif %}
-{%- endfor %}
-* {"command": "say-or-ask", "args": [MESSAGE_OR_QUESTION]}
-The command sends a message to the user, e.g., to ask a question or a clarification or to provide a result.
-The commands returns the user's response.
+> reply
+The command replies to the user.
+Arguments:
+ - MESSAGE is a string containing ultimate response for user.
 
 {{request_response}}
-
-The command say-or-ask is the only way to communicate with the user.
-
-Your primary goal is to answer the user's questions.
-1. You must answer the user's questions in a thorough and comprehensive manner.
-2. If you don't understand the question, you must ask the user for clarification.
-
-Start the dialogue by saying "How can I help you?".
-
-{{reinforce_format}}
 """.strip()
 
 plugin_system_template = """
-Act as a helpful assistant. Your training data goes up until September 2021.
-Today is {{today_date}}.
+Your training data is up-to-date until September 2021.
+Today's date is {{today_date}}.
 
 {%- if system_prefix %}
-{{system_prefix}}{% endif %}
+{{system_prefix}}
+{%- endif %}
 
-The following list of commands is available to you to answer the user's questions:
-* {"command": "end-dialog", "args": [STRING_RESULT_OR_EXPLANATION]}
-The command stops the dialogue when the result is ready, or explains why the user's request cannot be processed.
+Protocol
+The following commands are available to reply to user or find out the answer to the user's question:
 {%- for name, command in commands.items() %}
-* {"command": "{{name}}", "args": [{{ command.args | join(", ") }}]}
+> {{name}}
 {%- if command.description | decap %}
 {{command.description}}{% endif %}
 {%- if command.result %}
-The command returns {{command.result | decap}}{% endif %}
+The command returns {{command.result | decap}}
+{%- endif %}
+{%- if command.args %}
+Arguments:
+{%- for arg in command.args %}
+ - {{ arg }}
 {%- endfor %}
+{%- endif %}
+{%- endfor %}
+> reply
+The command replies to the user.
+Arguments:
+ - MESSAGE is a string containing ultimate response for user.
 
 {{request_response}}
-
-The goal is to find out the answer, provided that you are given all the required input.
-No command arguments can be guessed. If any is unknown, you must invoke the end-dialog command requesting clarification.
-
-The user question:
-
-> {{query}}
-
-{{reinforce_format}}
 """.strip()
 
 resp_template = """
-{{responses}}
-{{reinforce_format}}
-""".strip()
-
-reinforce_format = "Important: you must reply with a valid JSON containing a list of commands. You must not use natural language."
-
-open_ai_plugin_template = """
-Solve the task using the service defined below.
-
-Description of the service:
-
-{{description_for_model}}
-
-Service base URL: {{url}}
-
-Open API specification:
-
-{{open_api}}
+{{response}}
+**Remember to reply with a JSON with commands**
 """.strip()
 
 open_api_plugin_template = """
-You are given API schema and description of the service.
-You must use the service to follow the user's instructions.
-
+Service
 API_DESCRIPTION:
 {{api_description}}
 
 API_SCHEMA:
-
 ```typescript
 {{api_schema}}}
 ```
 """.strip()
 
-SYSTEM_DIALOG_MESSAGE = SystemMessagePromptTemplate(
+MAIN_SYSTEM_DIALOG_MESSAGE = SystemMessagePromptTemplate(
     prompt=PromptTemplate(
         template=system_template,
         template_format="jinja2",
-        input_variables=["system_prefix", "tools", "commands"],
+        input_variables=["system_prefix", "tools"],
         partial_variables={
             "today_date": get_today_date(),
-            "request_response": request_response,
-            "reinforce_format": reinforce_format,
+            "request_response": request_response
         },
     )
 )
@@ -153,11 +121,10 @@ PLUGIN_SYSTEM_DIALOG_MESSAGE = SystemMessagePromptTemplate(
     prompt=PromptTemplate(
         template=plugin_system_template,
         template_format="jinja2",
-        input_variables=["system_prefix", "commands", "query"],
+        input_variables=["system_prefix", "commands"],
         partial_variables={
             "today_date": get_today_date(),
-            "request_response": request_response,
-            "reinforce_format": reinforce_format,
+            "request_response": request_response
         },
     )
 )
@@ -166,9 +133,6 @@ RESP_DIALOG_PROMPT = HumanMessagePromptTemplate(
     prompt=PromptTemplate(
         template=resp_template,
         template_format="jinja2",
-        input_variables=["responses"],
-        partial_variables={
-            "reinforce_format": reinforce_format,
-        },
+        input_variables=["response"]
     )
 )

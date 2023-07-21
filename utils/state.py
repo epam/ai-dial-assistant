@@ -1,12 +1,13 @@
 from enum import Enum
 from typing import Any
 
-from langchain.schema import BaseMessage, AIMessage
+from langchain.schema import BaseMessage, AIMessage, HumanMessage
 
 from conf.project_conf import PluginOpenAI
-from prompts.dialog import SYSTEM_DIALOG_MESSAGE, RESP_DIALOG_PROMPT
+from prompts.dialog import MAIN_SYSTEM_DIALOG_MESSAGE, RESP_DIALOG_PROMPT
 from protocol.command_result import responses_to_text, Status
 from protocol.commands.base import commands_to_text
+from protocol.commands.end_dialog import Reply
 from protocol.commands.say_or_ask import SayOrAsk
 
 
@@ -64,8 +65,7 @@ def parse_history(
     tools: dict[str, str],
 ) -> list[BaseMessage]:
     messages = [
-        SYSTEM_DIALOG_MESSAGE.format(system_prefix=get_system_prefix(history), commands={}, tools=tools),
-        AIMessage(content=commands_to_text([{"command": SayOrAsk.token(), "args": ["How can I help you?"]}]))
+        MAIN_SYSTEM_DIALOG_MESSAGE.format(system_prefix=get_system_prefix(history), tools=tools)
     ]
 
     for message in history:
@@ -76,14 +76,13 @@ def parse_history(
             sort_by_index(invocations)
             for invocation in invocations:
                 messages.append(AIMessage(content=invocation[StateField.REQUEST]))
-                messages.append(RESP_DIALOG_PROMPT.format(responses=invocation[StateField.RESPONSE]))
+                messages.append(HumanMessage(content=invocation[StateField.RESPONSE]))
 
             messages.append(AIMessage(content=commands_to_text(
-                [{"command": SayOrAsk.token(), "args": [message[CommonField.CONTENT]]}]
+                [{"command": Reply.token(), "args": [message[CommonField.CONTENT]]}]
             )))
 
         if message[MessageField.ROLE] == OpenAIRole.USER:
-            responses = responses_to_text([{"status": Status.SUCCESS, "response": message[CommonField.CONTENT]}])
-            messages.append(RESP_DIALOG_PROMPT.format(responses=responses))
+            messages.append(HumanMessage(content=message[CommonField.CONTENT]))
 
     return messages

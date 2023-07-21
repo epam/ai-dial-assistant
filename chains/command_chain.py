@@ -67,7 +67,7 @@ class CommandChain:
                 raise Exception(f"Max message count of {MAX_MESSAGE_COUNT} exceeded")
             message_count += 1
 
-            token_stream = TextCollector(self.model_client.agenerate(history))
+            token_stream = TextCollector(self.model_client.agenerate(self._reinforce_last_message(history)))
             tokenator = Tokenator(token_stream)
             await CommandChain._skip_text(tokenator)
             parsing_content = await JsonParser.parse(tokenator)
@@ -112,8 +112,7 @@ class CommandChain:
                 history.append(self._print(AIMessage(content=fixed_model_response)))
 
                 response_text = responses_to_text(responses)
-                history.append(self._print(self.resp_prompt.format(responses=response_text)))
-
+                history.append(self._print(HumanMessage(content=response_text)))
                 await callback.on_state(fixed_model_response, response_text)
                 retry_count = 0
             except Exception as e:
@@ -128,7 +127,10 @@ class CommandChain:
 
                 if token_stream.buffer:
                     history.append(self._print(AIMessage(content=token_stream.buffer)))
-                    history.append(self._print(self.resp_prompt.format(responses=json.dumps({"error": str(e)}))))
+                    history.append(self._print(HumanMessage(content=json.dumps({"error": str(e)}))))
+
+    def _reinforce_last_message(self, history: list[BaseMessage]) -> list[BaseMessage]:
+        return history[:-1] + [self.resp_prompt.format(response=history[-1].content)]
 
     @staticmethod
     async def _to_args(args: AsyncIterator[JsonNode], callback: CommandCallback) -> AsyncIterator[Any]:

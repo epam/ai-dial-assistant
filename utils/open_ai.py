@@ -1,3 +1,6 @@
+import json
+from typing import Any
+
 from utils.env import get_env
 
 
@@ -45,3 +48,25 @@ def merge(target, source):
 
     if isinstance(source, dict):
         return merge_dicts(target, source)
+
+
+def wrap_chunk(chunk: str):
+    return f"data: {chunk}\n\n"
+
+
+def wrap_choice(response_id: str, timestamp: int, choice: dict[str, Any]):
+    return wrap_chunk(json.dumps({
+        "id": response_id,
+        "object": "chat.completion.chunk",
+        "created": timestamp,
+        "choices": [{"index": 0} | choice]
+    }))
+
+
+def wrap_error(e: Exception):
+    return wrap_chunk(json.dumps({
+        "type": "internal_server_error",
+        "message": repr(e),
+        "param": None,
+        "code": None
+    }))

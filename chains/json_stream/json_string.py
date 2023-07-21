@@ -93,7 +93,9 @@ class JsonString(ComplexNode[str], AsyncIterator[str]):
         elif char == 't':
             return '\t'
         else:
-            raise ValueError(f"Unexpected escape sequence: \\{char}" + " at " + str(stream.char_position - 1))
+            # Ignore when model cannot escape text properly
+            return char
+            # raise ValueError(f"Unexpected escape sequence: \\{char}" + " at " + str(stream.char_position - 1))
 
     @override
     def value(self) -> str:
