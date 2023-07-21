@@ -50,9 +50,9 @@ Arguments:
  - QUERY is a string formulating the query to the plugin.
 {%- endif %}
 > reply
-The command replies to the user.
+The command delivers ultimate result to the user.
 Arguments:
- - MESSAGE is a string containing ultimate response for user.
+ - MESSAGE is a string containing response for user.
 
 {{request_response}}
 """.strip()
@@ -82,9 +82,9 @@ Arguments:
 {%- endif %}
 {%- endfor %}
 > reply
-The command replies to the user.
+The command delivers ultimate result to the user
 Arguments:
- - MESSAGE is a string containing ultimate response for user.
+ - MESSAGE is a string containing response for user.
 
 {{request_response}}
 """.strip()
