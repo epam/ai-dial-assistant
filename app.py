@@ -124,16 +124,15 @@ async def stream_response(chunks: AsyncIterator[Any]) -> Response:
 
 
 async def plain_response(chunks: AsyncIterator[Any]) -> Response:
-    choice = {}
+    message = {}
     async for chunk in chunks:
-        choice = merge(choice, chunk)
+        message = merge(message, chunk)
 
     return JSONResponse({
         "id": str(uuid.uuid4()),
         "object": "chat.completion",
         "created": int(time.time()),
-        "choices": [{"index": 0} | choice],
-        "finish_reason": "stop"
+        "choices": [{"index": 0, "message": message, "finish_reason": "stop"}],
     })
 
 
