@@ -13,15 +13,16 @@ Even though the limits for the assistant can be enforced, they cannot be statica
 
 - Underlying model
 - Add-ons provided in the request
+- max_completion_tokens if the user can reduce it
 
 If the /openai/models could accept the completion request, then all required limits would be adjusted accordingly. Here are the formulas:
 
-- **max_total_tokens** = model limit - len(assistant's system message with add-ons) - add-ons' maximum dialog size<sub>per model</sub> \[ - len(proxy's system message)]
-- **max_prompt_tokens** = per model limit
-- **max_completion_tokens** = per model limit
+- **max_total_tokens** = model total tokens - len(assistant's system message with add-ons) - add-ons' maximum dialog size<sub>per model</sub> \[ - len(proxy's system message)]
+- **max_prompt_tokens** = max_total_tokens - max_completion_tokens
+- **max_completion_tokens** = per model limit (user can make it smaller to get more for prompt)
 - **prompt_token_unit** = per model unit
 - **max_prompt_messages** = (I'm not sure if we need this)
-- **max_system_messages** = 1
+- **max_system_messages** = 1 for generic assistant, 0 for predefined assistant
 
 Currently, the proxy doesn't know which system message is used by the assistant or the overhead added by add-on descriptions.
 Therefore, to calculate the length in tokens of the assistant's system message with add-ons, the proxy needs the following information:
@@ -39,4 +40,5 @@ add-ons to the assistant itself by adding a new endpoint to the assistant API.
 
 - **max_prompt_tokens** - Lets users know how many tokens the assistant can accept to proceed with the request. At least for the last user message + system message. 
 - **max_completion_tokens** - This is a reserved space for the assistant's response. If exceeded, the response will be interrupted with a finish_reason: "length".
-- **add-ons' maximum dialog size<sub>per model</sub>** - This is an internal parameter that reserves space for model dialog with add-ons. If exceeded, the request processing will be aborted.
+- **add-ons' maximum dialog size<sub>per model</sub>** - This is an internal parameter that reserves space for model dialog with add-ons.
+If exceeded, the model should explain to the user that it cannot process the request.
