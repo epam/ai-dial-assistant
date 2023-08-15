@@ -55,6 +55,7 @@ message in the usage stats, allowing the user to calculate the prompt size accur
 - Final model response size - **max_completion_tokens** - can be reduced by the user to get more tokens for the prompt.
 
 In a predefined assistant user is not able to send a system message that controls the assistant's behavior:
+
 ![predefined assistant](predefined_assistant_context_breakdown.svg)
 
 # Guarantees
