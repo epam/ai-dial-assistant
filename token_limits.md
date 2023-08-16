@@ -13,9 +13,8 @@ Even though the limits for the assistant can be enforced, they cannot be statica
 
 - Underlying model
 - Add-ons provided in the request
-- **max_completion_tokens**
 
-If the /openai/models endpoint could accept the above information, all required limits will be adjusted accordingly.
+If the /openai/assistants endpoint could accept the above information, all required limits will be adjusted accordingly.
 Here are the formulas:
 
 - **max_total_tokens** = model total tokens - len(assistant's system message with add-ons) - add-ons' maximum dialog size<sub>per model</sub> \[ - len(proxy's system message)]
