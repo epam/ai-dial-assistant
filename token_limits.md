@@ -14,10 +14,10 @@ Even though the limits for the assistant can be enforced, they cannot be statica
 - Underlying model
 - Add-ons provided in the request
 
-Here are the formulas:
+Here are the formulas for models with shared context between prompt and completion:
 
 - **max_total_tokens** = model total tokens - len(assistant's system message with add-ons) - add-ons' maximum dialog size<sub>per model</sub> \[ - len(proxy's system message)]
-- **max_prompt_tokens** = max_total_tokens - max_completion_tokens (for modes with shared context)
+- **max_prompt_tokens** = max_total_tokens - max_completion_tokens
 - **max_completion_tokens** = per model limit (user can make it smaller to get more for prompt)
 - **prompt_token_unit** = per model unit
 - **max_prompt_messages** = (I'm not sure if we need this)
