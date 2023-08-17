@@ -18,7 +18,7 @@ If the /openai/assistants endpoint could accept the above information, all requi
 Here are the formulas:
 
 - **max_total_tokens** = model total tokens - len(assistant's system message with add-ons) - add-ons' maximum dialog size<sub>per model</sub> \[ - len(proxy's system message)]
-- **max_prompt_tokens** = max_total_tokens - max_completion_tokens
+- **max_prompt_tokens** = max_total_tokens - max_completion_tokens (for modes with shared context)
 - **max_completion_tokens** = per model limit (user can make it smaller to get more for prompt)
 - **prompt_token_unit** = per model unit
 - **max_prompt_messages** = (I'm not sure if we need this)
@@ -56,6 +56,9 @@ message in the usage stats, allowing the user to calculate the prompt size accur
 In a predefined assistant user is not able to send a system message that controls the assistant's behavior:
 
 ![predefined assistant](predefined_assistant_context_breakdown.svg)
+
+For VertexAI, where context is split into 2 parts: prompt and completion, the diagram will look like this:
+![generic assistant split context](generic_assistant_split_context_breakdown.svg)
 
 # Guarantees
 
