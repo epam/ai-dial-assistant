@@ -14,7 +14,6 @@ Even though the limits for the assistant can be enforced, they cannot be statica
 - Underlying model
 - Add-ons provided in the request
 
-If the /openai/assistants endpoint could accept the above information, all required limits will be adjusted accordingly.
 Here are the formulas:
 
 - **max_total_tokens** = model total tokens - len(assistant's system message with add-ons) - add-ons' maximum dialog size<sub>per model</sub> \[ - len(proxy's system message)]
@@ -37,10 +36,13 @@ In other words, len(text<sub>1</sub> + text<sub>2</sub>) may not be equal to len
 Therefore, I'm more inclined to delegate the calculation of the overhead added by the assistant's system message with
 add-ons to the assistant itself by adding a new endpoint to the assistant API.
 
+It may be expensive to calculate limits for all combinations of assistant, model, and addons; therefore, it appears to be
+more sensible to return limits only per a specified combination, e.g. /openai/assistants/assistant-10K?model=gpt-4&add-on=wolfram.
+
 ![generic assistant](generic_assistant_context_breakdown.svg)
 
 Internal parameters:
-- The assistant's system message establishes the communication protocol between the model and other entities such as users and add-ons..
+- The assistant's system message establishes the communication protocol between the model and other entities such as users and add-ons.
 - Dialog with add-ons includes commands to invoke add-ons and responses from add-ons.
 - Response overhead - are extra tokens required to differentiate between add-on invocations and replies to the user.
 
@@ -53,11 +55,11 @@ to be opaque to the user, but it contributes to the prompt size. Therefore, the 
 message in the usage stats, allowing the user to calculate the prompt size accurately.
 - Final model response size - **max_completion_tokens** - can be reduced by the user to get more tokens for the prompt.
 
-In a predefined assistant user is not able to send a system message that controls the assistant's behavior:
+In a predefined assistant, the user is not able to send a system message that controls the assistant's behavior:
 
 ![predefined assistant](predefined_assistant_context_breakdown.svg)
 
-For VertexAI, where context is split into 2 parts: prompt and completion, the diagram will look like this:
+For VertexAI, where the context is divided into two parts - prompt and completion, the diagram would appear as follows:
 ![generic assistant split context](generic_assistant_split_context_breakdown.svg)
 
 # Guarantees
