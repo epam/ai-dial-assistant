@@ -18,7 +18,7 @@ Here are the formulas for models with shared context between prompt and completi
 
 - **max_total_tokens** = model total tokens - len(assistant's system message with add-ons) - add-ons' maximum dialog size<sub>per model</sub> \[ - len(proxy's system message)]
 - **max_prompt_tokens** = max_total_tokens - max_completion_tokens
-- **max_completion_tokens** = per model limit (user can make it smaller to get more for prompt)
+- **max_completion_tokens** = per model limit (user can make it smaller to allow more tokens for prompt)
 - **prompt_token_unit** = per model unit
 - **max_prompt_messages** = (I'm not sure if we need this)
 - **max_system_messages** = 1 for generic assistant, 0 for predefined assistant
@@ -36,8 +36,9 @@ In other words, len(text<sub>1</sub> + text<sub>2</sub>) may not be equal to len
 Therefore, I'm more inclined to delegate the calculation of the overhead added by the assistant's system message with
 add-ons to the assistant itself by adding a new endpoint to the assistant API.
 
-It may be expensive to calculate limits for all combinations of assistant, model, and addons; therefore, it appears to be
-more sensible to return limits only per a specified combination, e.g. /openai/assistants/assistant-10K?model=gpt-4&add-on=wolfram.
+It may be expensive to calculate limits for all combinations of assistant, model, and addons on listing request;
+therefore, it appears to be more sensible to return limits only per a specified combination, e.g.
+/openai/assistants/assistant-10K?model=gpt-4&add-on=wolfram.
 
 ![generic assistant](generic_assistant_context_breakdown.svg)
 
@@ -48,12 +49,13 @@ Internal parameters:
 
 Which parts can be controlled by the user of the API?
 - User prompt:
-    - System message and last message must fit into **max_prompt_tokens**, the rest of the history can be dropped and
-the number of silently dropped messages will be returned in the response.
+    - System message and last message must fit into **max_prompt_tokens**, the rest of the history can be dropped
+by assistant and the number of silently dropped messages will be returned in the response.
     - If model responses involve add-on invocations, this will be reflected in a non-empty state. This state is intended
-to be opaque to the user, but it contributes to the prompt size. Therefore, the assistant should return the size of its
-message in the usage stats, allowing the user to calculate the prompt size accurately.
-- Final model response size - **max_completion_tokens** - can be reduced by the user to get more tokens for the prompt.
+to be opaque to the user, but it contributes to the prompt size as part of history on subsequent requests. Therefore,
+the assistant should probably return the size of its message in the usage stats including state size, allowing
+the user to calculate the prompt size accurately.
+- Final model response size - **max_completion_tokens** - can be reduced by the user to allow more tokens for the prompt.
 
 In a predefined assistant, the user is not able to send a system message to control the assistant's behavior:
 
@@ -62,7 +64,8 @@ In a predefined assistant, the user is not able to send a system message to cont
 For VertexAI, where the context is divided into two parts - prompt and completion, the diagram would appear as follows:
 ![generic assistant split context](generic_assistant_split_context_breakdown.svg)
 
-As seen from the diagram, there will be individual prompt and completion limits for dialog with add-ons.
+As seen from the diagram, there will be individual prompt and completion limits for dialog with add-ons. And reducing
+the **max_completion_tokens** will not gain more tokens for the prompt.
 
 # Guarantees
 
