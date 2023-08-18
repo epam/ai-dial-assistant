@@ -25,6 +25,9 @@ ALWAYS reply with a JSON containing an array of available commands. You must not
     }
   ]
 }
+
+Example:
+{"commands": [{"command": "reply", "args": ["Hello, world!"]}]}
 """.strip()
 
 system_template = """
@@ -43,9 +46,9 @@ The command runs a specified plugin to solve a one-shot task written in natural 
 Plugins do not see current conversation and require all details to be provided in the query to solve the task.
 The command returns the result of the plugin call.
 Arguments:
- - NAME must be one of the following plugins:
+ - NAME is one of the following plugins:
 {%- for name, description in tools.items() %}
-    * {{name}}: {{description | decap}}
+    * {{name}} - {{description | decap}}
 {%- endfor %}
  - QUERY is a string formulating the query to the plugin.
 {%- endif %}
