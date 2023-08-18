@@ -1,5 +1,6 @@
 from urllib.parse import urljoin
 
+from aiocache import cached
 from fastapi import HTTPException
 from langchain.requests import Requests
 from langchain.tools import OpenAPISpec
@@ -70,12 +71,14 @@ async def get_open_ai_plugin_info(addon_url: str, token_source: AddonTokenSource
     return OpenAIPluginInfo(ai_plugin=ai_plugin, open_api=open_api, auth=addon_auth)
 
 
+@cached()
 async def _parse_ai_plugin_conf(requests: Requests, url: str) -> AIPluginConf:
     async with requests.aget(url) as response:
         # content_type=None to disable validation, sometimes response comes as text/json
         return parse_obj_as(AIPluginConf, await response.json(content_type=None))
 
 
+@cached()
 async def _parse_openapi_spec(requests: Requests, url: str) -> OpenAPISpec:
     async with requests.aget(url) as response:
         return OpenAPISpec.from_text(await response.text())

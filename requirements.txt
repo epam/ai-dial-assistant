@@ -22,3 +22,4 @@ starlette~=0.27.0
 tiktoken==0.3.3
 uvicorn==0.22.0
 wolframalpha==5.0.0
+aiocache~=0.12.2
