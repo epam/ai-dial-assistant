@@ -1,4 +1,4 @@
 model_name: gpt-4
 temperature: 0.0
-request_timeout: 120
 openai_api_base: !env OPENAI_API_BASE:http://localhost:8080
+request_timeout: 300
