@@ -31,7 +31,6 @@ Example:
 """.strip()
 
 system_template = """
-Your training data is up-to-date until September 2021.
 Today's date is {{today_date}}.
 
 {%- if system_prefix %}
@@ -61,7 +60,6 @@ Arguments:
 """.strip()
 
 plugin_system_template = """
-Your training data is up-to-date until September 2021.
 Today's date is {{today_date}}.
 
 {%- if system_prefix %}
