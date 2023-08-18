@@ -49,18 +49,20 @@ Internal parameters:
 Which parts can be controlled by the user of the API?
 - User prompt:
     - System message and last message must fit into **max_prompt_tokens**, the rest of the history can be dropped and
-the result will contain the number of dropped messages.
+the number of silently dropped messages will be returned in the response.
     - If model responses involve add-on invocations, this will be reflected in a non-empty state. This state is intended
 to be opaque to the user, but it contributes to the prompt size. Therefore, the assistant should return the size of its
 message in the usage stats, allowing the user to calculate the prompt size accurately.
 - Final model response size - **max_completion_tokens** - can be reduced by the user to get more tokens for the prompt.
 
-In a predefined assistant, the user is not able to send a system message that controls the assistant's behavior:
+In a predefined assistant, the user is not able to send a system message to control the assistant's behavior:
 
 ![predefined assistant](predefined_assistant_context_breakdown.svg)
 
 For VertexAI, where the context is divided into two parts - prompt and completion, the diagram would appear as follows:
 ![generic assistant split context](generic_assistant_split_context_breakdown.svg)
+
+As seen from the diagram, there will be individual prompt and completion limits for dialog with add-ons.
 
 # Guarantees
 
