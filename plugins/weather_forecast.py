@@ -15,7 +15,7 @@ class WeatherForecast(Command):
 
     @override
     async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> ResultObject:
-        assert len(args) == 2
+        self.assert_arg_count(args, 2)
         location = args[0]
         date = args[1]
 

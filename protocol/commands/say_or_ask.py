@@ -14,7 +14,7 @@ class SayOrAsk(Command):
 
     @override
     async def execute(self, args: List[str], execution_callback: ExecutionCallback) -> ResultObject:
-        assert len(args) == 1
+        self.assert_arg_count(args, 1)
         message = args[0]
 
         print_red(indent(message, 0, ">"))

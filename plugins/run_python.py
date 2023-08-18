@@ -20,7 +20,7 @@ class RunPython(Command):
 
     @override
     async def execute(self, args: List[str], execution_callback: ExecutionCallback) -> ResultObject:
-        assert len(args) == 1
+        self.assert_arg_count(args, 1)
         source = args[0]
 
         cwd = get_project_root() / ".tmp"

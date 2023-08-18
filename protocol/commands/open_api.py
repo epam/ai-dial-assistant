@@ -19,6 +19,6 @@ class OpenAPIChatCommand(Command):
 
     @override
     async def execute(self, args: List[Any], execution_callback: ExecutionCallback) -> ResultObject:
-        assert len(args) == 1
+        self.assert_arg_count(args, 1)
 
         return await OpenAPIEndpointRequester(self.op, self.plugin_auth).execute(args[0])

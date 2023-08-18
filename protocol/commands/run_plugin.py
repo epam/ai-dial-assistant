@@ -37,7 +37,7 @@ class RunPlugin(Command):
 
     @override
     async def execute(self, args: List[str], execution_callback: ExecutionCallback) -> ResultObject:
-        assert len(args) == 2
+        self.assert_arg_count(args, 2)
         name = args[0]
         query = args[1]
 

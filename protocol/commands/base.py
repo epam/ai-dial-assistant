@@ -60,6 +60,10 @@ class Command(ABC):
     def __str__(self) -> str:
         return self.token()
 
+    def assert_arg_count(self, args: List[Any], count: int):
+        if len(args) != count:
+            raise ValueError(f"Command {self} expects {count} args, but got {len(args)}")
+
 
 class FinalCommand(Command, ABC):
     @override

@@ -15,7 +15,7 @@ class WolframAlpha(Command):
 
     @override
     async def execute(self, args: List[str], execution_callback: ExecutionCallback) -> ResultObject:
-        assert len(args) == 1
+        self.assert_arg_count(args, 1)
         request = args[0]
 
         client = wolframalpha.Client(app_id)
