@@ -100,10 +100,9 @@ There are basically 2 ways to enforce limits:
     * No need to know how to tokenize input for any model.
   * Cons
     * Need to know size of dialog with add-ons to correct max_prompt_tokens for model request<sup>1</sup> (perhaps can be retrieved from usage stats).
+Otherwise, the dialog may not use all reserved tokens, that will allow more user prompt tokens to be processed.
     * Errors may be confusing if pre-calculated sizes are not up-to-date.
     * May require extra tokens as clearance for rough tokenization.
-
-<sup>1</sup> The dialog may not use all reserved tokens, that will allow more prompt tokens to be processed.
 
 # Guarantees
 
