@@ -110,3 +110,127 @@ Otherwise, the dialog may not use all reserved tokens, that will allow more user
 - **max_completion_tokens** - If exceeded, the response will be interrupted with a finish_reason: "length".
 - **add-ons' maximum dialog size<sub>per model</sub>** - This is an internal parameter that reserves space for model's dialog with add-ons.
 If exceeded, the model should explain to the user that it cannot process the request.
+
+# Pseudocode
+
+## Assistant logic
+
+```python
+def process_user_request():
+    user_request: dict = {
+        "max_prompt_tokens": 100,
+        "model": 'gpt-4',
+        "messages": [
+            {
+                "role": "system",
+                "content": "Give answers based on facts only"
+            },
+            {
+                "role": "user",
+                "content": "What is EPAM?"
+            },
+            {
+                "role": "assistant",
+                "content": "EPAM is a leading digital transformation services and product engineering company, providing digital platform engineering and software development services to customers located around the world, primarily in North America, Europe, and Asia. They deliver business and technology transformation from start to finish, leveraging agile methodologies, customer collaboration frameworks, engineering excellence tools, hybrid teams, and their award-winning proprietary global delivery platform. They focus on building long-term partnerships with their customers in a market that is constantly challenged by the pressures of digitization through innovative strategy and scalable software solutions.",
+                "custom_content": {
+                    "state": {
+                        "invocations": [
+                            {
+                                "index": 0,
+                                "request": "{\"commands\": [{\"command\": \"run-plugin\", \"args\": [\"epam-10k-semantic-search\", \"What is EPAM?\"]}]}",
+                                "response": "{\"responses\": [{\"status\": \"SUCCESS\", \"response\": \"EPAM is a leading digital transformation services and product engineering company, providing digital platform engineering and software development services to customers located around the world, primarily in North America, Europe, and Asia. They deliver business and technology transformation from start to finish, leveraging agile methodologies, customer collaboration frameworks, engineering excellence tools, hybrid teams, and their award-winning proprietary global delivery platform. They focus on building long-term partnerships with their customers in a market that is constantly challenged by the pressures of digitization through innovative strategy and scalable software solutions.\"}]}"
+                            }
+                        ]
+                    }
+                }
+            },
+            {
+                "role": "user",
+                "content": "What was EPAM's income in 2021?"
+            },
+        ],
+        "addons": [
+            {
+                "url": "https://epam-qna-application.staging.deltixhub.io/semantic-search/.well-known/ai-plugin.json"
+            }
+        ]
+    }
+
+    limits = limits_service.get_limits(user_request["model"], user_request["addons"])
+    # limits =
+    # {
+    #     "max_total_tokens": 2000,
+    #     "max_addons_dialog_tokens": 500,
+    #     "single_response_overhead": 5,
+    #     "responses_array_overhead": 5,
+    #     "reply_to_user_overhead": 5,
+    # }
+
+    user_system_message = next((m for m in user_request["messages"] if m["role"] == "system"), None)
+    assistant_system_message = build_system_message(user_system_message, user_request["addons"])
+    # assistant_system_message =
+    # Today's date is 22-Jul-2023.
+    #
+    # Give answers based on facts only
+    #
+    # Protocol
+    # The following commands are available to reply to user or find out the answer to the user's question:
+    # ...
+
+    assistant_request = {
+        "model": 'gpt-4',
+        "messages": [assistant_system_message] + [m for m in user_request["messages"] if m["role"] != "system"]
+    }
+
+    model_client = ModelClient(user_request["model"])
+    max_user_reply_size = user_request["total_tokens"] if "total_tokens" in user_request else limits["max_total_tokens"] + limits["reply_to_user_overhead"]
+    max_completion_tokens = max(max_user_reply_size, limits["max_addons_dialog_tokens"])
+    model_response = model_client.generate(assistant_request
+                                           | {"max_prompt_tokens": user_request["max_prompt_tokens"]} if "max_prompt_tokens" in user_request else {}
+                                           | {"total_tokens": max_completion_tokens})
+
+    # remove discarded messages from subsequent requests
+    discarded_message_count = model_response["statistics"]["discarded_messages"]
+    assistant_request = {
+        "model": 'gpt-4',
+        "messages": [assistant_system_message] + [m for m in user_request["messages"][discarded_message_count:] if m["role"] != "system"]
+    }
+
+    usage = model_response["usage"]
+    commands = parse_commands(model_response["content"])
+    responses = []
+
+    prompt_tokens = usage["prompt_tokens"]
+    dialog_size = usage["completion_tokens"]
+    while True:
+        estimated_dialog_size = dialog_size + limits["responses_array_overhead"]
+        for command in commands:
+            if command.name == "reply":
+                return {
+                    "content": command.args[0],
+                    "usage": {
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": dialog_size
+                    }
+                }
+
+            command_result = command.execute()
+            # Addon session will return tokens for the result
+            estimated_dialog_size += command_result.token_count
+            estimated_dialog_size += limits["single_response_overhead"]
+
+            if estimated_dialog_size > limits["max_addons_dialog_tokens"]:
+                # TODO: Implement best effort logic
+                handle_max_addons_dialog_tokens_overflow()
+
+            responses.append(command_result.content)
+
+        assistant_request["messages"].append({"role": "assistant", "content": model_response["content"]})
+        assistant_request["messages"].append({"role": "user", "content": {"responses": responses}})
+
+        max_completion_tokens = max(max_user_reply_size, limits["max_addons_dialog_tokens"] - estimated_dialog_size)
+        model_response = model_client.generate(assistant_request | {"total_tokens": max_completion_tokens})
+
+        # replace estimate with actual value
+        dialog_size = model_response["usage"]["total_tokens"] - prompt_tokens
+```
