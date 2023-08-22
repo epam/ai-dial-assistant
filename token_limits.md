@@ -184,12 +184,13 @@ def process_user_request():
 
     model_client = ModelClient(user_request["model"])
     max_user_reply_size = user_request["total_tokens"] if "total_tokens" in user_request else limits["max_total_tokens"] + limits["reply_to_user_overhead"]
+    # Beforehand, we don't know what the model will do next: reply to the user or start/continue a dialogue with addons.
     max_completion_tokens = max(max_user_reply_size, limits["max_addons_dialog_tokens"])
     model_response = model_client.generate(assistant_request
                                            | {"max_prompt_tokens": user_request["max_prompt_tokens"]} if "max_prompt_tokens" in user_request else {}
                                            | {"total_tokens": max_completion_tokens})
 
-    # remove discarded messages from subsequent requests
+    # Remove discarded messages from subsequent requests
     discarded_message_count = model_response["statistics"]["discarded_messages"]
     assistant_request = {
         "model": 'gpt-4',
@@ -207,6 +208,9 @@ def process_user_request():
         for command in commands:
             if command.name == "reply":
                 return {
+                    # If there are more reserved tokens left for dialog with addons than available for client reply
+                    # we may end up with longer response to user than expected.
+                    # There is no way to cut it correctly without a tokenizer.
                     "content": command.args[0],
                     "usage": {
                         "prompt_tokens": prompt_tokens,
