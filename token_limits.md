@@ -117,44 +117,18 @@ If exceeded, the model should explain to the user that it cannot process the req
 
 ```python
 def process_user_request():
-    user_request: dict = {
-        "max_prompt_tokens": 100,
-        "model": 'gpt-4',
-        "messages": [
-            {
-                "role": "system",
-                "content": "Give answers based on facts only"
-            },
-            {
-                "role": "user",
-                "content": "What is EPAM?"
-            },
-            {
-                "role": "assistant",
-                "content": "EPAM is a leading digital transformation services and product engineering company, providing digital platform engineering and software development services to customers located around the world, primarily in North America, Europe, and Asia. They deliver business and technology transformation from start to finish, leveraging agile methodologies, customer collaboration frameworks, engineering excellence tools, hybrid teams, and their award-winning proprietary global delivery platform. They focus on building long-term partnerships with their customers in a market that is constantly challenged by the pressures of digitization through innovative strategy and scalable software solutions.",
-                "custom_content": {
-                    "state": {
-                        "invocations": [
-                            {
-                                "index": 0,
-                                "request": "{\"commands\": [{\"command\": \"run-plugin\", \"args\": [\"epam-10k-semantic-search\", \"What is EPAM?\"]}]}",
-                                "response": "{\"responses\": [{\"status\": \"SUCCESS\", \"response\": \"EPAM is a leading digital transformation services and product engineering company, providing digital platform engineering and software development services to customers located around the world, primarily in North America, Europe, and Asia. They deliver business and technology transformation from start to finish, leveraging agile methodologies, customer collaboration frameworks, engineering excellence tools, hybrid teams, and their award-winning proprietary global delivery platform. They focus on building long-term partnerships with their customers in a market that is constantly challenged by the pressures of digitization through innovative strategy and scalable software solutions.\"}]}"
-                            }
-                        ]
-                    }
-                }
-            },
-            {
-                "role": "user",
-                "content": "What was EPAM's income in 2021?"
-            },
-        ],
-        "addons": [
-            {
-                "url": "https://epam-qna-application.staging.deltixhub.io/semantic-search/.well-known/ai-plugin.json"
-            }
-        ]
-    }
+    # user_request: dict = {
+    #     "max_prompt_tokens": 100,
+    #     "model": 'gpt-4',
+    #     "messages": [
+    #         ...
+    #     ],
+    #     "addons": [
+    #         {
+    #             "url": "https://epam-qna-application.staging.deltixhub.io/semantic-search/.well-known/ai-plugin.json"
+    #         }
+    #     ]
+    # }
 
     limits = limits_service.get_limits(user_request["model"], user_request["addons"])
     # limits =
@@ -211,10 +185,13 @@ def process_user_request():
                     # If there are more reserved tokens left for dialog with addons than available for client reply
                     # we may end up with longer response to user than expected.
                     # There is no way to cut it correctly without a tokenizer.
+                    # If model response is streamed and usage is returned for each chunk,
+                    # we can interrupt the response at the end of the closest chunk.
                     "content": command.args[0],
                     "usage": {
                         "prompt_tokens": prompt_tokens,
-                        "completion_tokens": dialog_size
+                        "completion_tokens": dialog_size,
+                        "total_tokens": dialog_size + prompt_tokens
                     }
                 }
 
@@ -225,7 +202,8 @@ def process_user_request():
 
             if estimated_dialog_size > limits["max_addons_dialog_tokens"]:
                 # TODO: Implement best effort logic
-                handle_max_addons_dialog_tokens_overflow()
+                # E.g. model explains that it cannot process the request
+                return handle_max_addons_dialog_tokens_overflow()
 
             responses.append(command_result.content)
 
@@ -238,3 +216,95 @@ def process_user_request():
         # replace estimate with actual value
         dialog_size = model_response["usage"]["total_tokens"] - prompt_tokens
 ```
+
+## Client logic
+
+Interaction with the assistant is mostly equivalent to interaction with underlying model directly, except for the following:
+* Add-ons can be provided in the request that give the assistant additional capabilities.
+* Limits are lower than model limits due to added overhead: system message, dialog with add-ons, additional message markup etc.
+* It only supports basic chat functionality and not all functionality of the underlying model. For instance, it doesn't
+support [function calls](https://openai.com/blog/function-calling-and-other-api-updates) in gpt-3.5/gpt-4.
+* Usage information takes into account assistant's overhead required for use or ability to use add-ons.
+* Length of generated message by assistant may contain more tokens than requested if we choose not to use tokenizers in the assistant.
+
+```python
+def send_assistant_request():
+    history = [
+        {
+            "role": "system",
+            "content": "Give answers based on facts only"
+        },
+        {
+            "role": "user",
+            "content": "What is EPAM?"
+        },
+        {
+            "role": "assistant",
+            "content": "EPAM is a leading digital transformation services and product engineering company, providing digital platform engineering and software development services to customers located around the world, primarily in North America, Europe, and Asia. They deliver business and technology transformation from start to finish, leveraging agile methodologies, customer collaboration frameworks, engineering excellence tools, hybrid teams, and their award-winning proprietary global delivery platform. They focus on building long-term partnerships with their customers in a market that is constantly challenged by the pressures of digitization through innovative strategy and scalable software solutions.",
+            "custom_content": {
+                "state": {
+                    "invocations": [
+                        {
+                            "index": 0,
+                            "request": "{\"commands\": [{\"command\": \"run-plugin\", \"args\": [\"epam-10k-semantic-search\", \"What is EPAM?\"]}]}",
+                            "response": "{\"responses\": [{\"status\": \"SUCCESS\", \"response\": \"EPAM is a leading digital transformation services and product engineering company, providing digital platform engineering and software development services to customers located around the world, primarily in North America, Europe, and Asia. They deliver business and technology transformation from start to finish, leveraging agile methodologies, customer collaboration frameworks, engineering excellence tools, hybrid teams, and their award-winning proprietary global delivery platform. They focus on building long-term partnerships with their customers in a market that is constantly challenged by the pressures of digitization through innovative strategy and scalable software solutions.\"}]}"
+                        }
+                    ]
+                }
+            },
+            "usage": {
+                "prompt_tokens": 60,
+                # Completion tokens include state size
+                "completion_tokens": 50,
+                "total_tokens": 110
+            }
+        },
+    ]
+    tokenizer = get_tokenizer(user_request["model"])
+    limits = limits_service.get_limits(user_request["model"], user_request["addons"])
+    # limits =
+    # {
+    #     "max_total_tokens": 2000
+    # }
+
+    # Leave some tokens for completion (e.g. ~40% of max_total_tokens)
+    max_prompt_size = int(limits["max_total_tokens"] * 0.6)
+    prompt = {
+        "role": "user",
+        "content": "What was EPAM's income in 2021?"
+    }
+    # prompt_size = system message size + last user message size
+    prompt_size = tokenizer.get_token_count(history[0]["content"]) + tokenizer.get_token_count(prompt["content"])
+
+    if prompt_size > max_prompt_size:
+        raise Exception(f'Prompt is too long. Max tokens: {max_prompt_size}, actual: {prompt_size}')
+
+    previous_assistant_response = history[-1]
+    history_size = previous_assistant_response["usage"]["total_tokens"]
+
+    if history_size + prompt_size > limits["max_total_tokens"]:
+        print("Warning: The history doesn't fit into the model and as a result, some old messages will be ignored.")
+
+    user_request: dict = {
+        "max_prompt_tokens": max_prompt_size,
+        "model": 'gpt-4',
+        "messages": history + [prompt],
+        "addons": [
+            {
+                "url": "https://epam-qna-application.staging.deltixhub.io/semantic-search/.well-known/ai-plugin.json"
+            }
+        ]
+    }
+
+    assistant_response = assistant_service.generate(user_request)["choices"][0]
+
+    finish_reason = assistant_response["finish_reason"]
+    print(f'Got response from assistant with finish_reason {finish_reason}: {assistant_response["message"]["content"]}')
+```
+
+### Notes
+
+Add-on invocations may not always finish successfully due to various reasons, such as: network issues, insufficient
+context size to process user query, etc. Therefore, the assistant is expected to provide user answer based on available
+information. If there is not enough available tokens for the answer, response will contain finish_reason: "length".
+Continuation of aborted token sequence is not currently supported.  
