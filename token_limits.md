@@ -283,10 +283,10 @@ def send_assistant_request():
     if prompt_size > max_prompt_size:
         raise Exception(f'Prompt is too long. Max tokens: {max_prompt_size}, actual: {prompt_size}')
 
-    previous_assistant_response = history[-1]
-    # Assistant response contains usage information.
-    # Appropriate tokenizer should be used if there is no previous assistant response.
-    history_size = previous_assistant_response["usage"]["total_tokens"]
+    history_size = sum(
+        m["usage"]["completion_tokens"] if m["role"] == "assistant" else tokenizer.get_token_count(m["content"])
+        for m in history[1:]
+    )
 
     if history_size + prompt_size > limits["max_total_tokens"]:
         print("Warning: The history doesn't fit into the model and as a result, some old messages will be ignored.")
