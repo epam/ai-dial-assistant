@@ -307,4 +307,9 @@ def send_assistant_request():
 Add-on invocations may not always finish successfully due to various reasons, such as: network issues, insufficient
 context size to process user query, etc. Therefore, the assistant is expected to provide user answer based on available
 information. If there is not enough available tokens for the answer, response will contain finish_reason: "length".
-Continuation of aborted token sequence is not currently supported.  
+Continuation of aborted token sequence is not currently supported.
+
+# Add-on session
+
+The assistant interacts with each add-on in a separate conversation. To provide summary of all collected information
+that separate conversation in a model with shared context should have a reserved amount of tokens for response.
