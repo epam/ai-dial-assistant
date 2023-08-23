@@ -267,6 +267,7 @@ def send_assistant_request():
     # limits =
     # {
     #     "max_total_tokens": 2000
+    #     "max_system_messages": 1
     # }
 
     # Leave some tokens for completion (e.g. ~40% of max_total_tokens)
