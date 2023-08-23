@@ -134,6 +134,7 @@ def process_user_request():
     # limits =
     # {
     #     "max_total_tokens": 2000,
+    #     # these are internal parameters and should only be visible to assistant
     #     "max_addons_dialog_tokens": 500,
     #     "single_response_overhead": 5,
     #     "responses_array_overhead": 5,
