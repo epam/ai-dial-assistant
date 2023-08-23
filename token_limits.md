@@ -255,10 +255,10 @@ def send_assistant_request():
             },
             "usage": {
                 # Prompt tokens include assistant's system message size
-                "prompt_tokens": 60,
+                "prompt_tokens": 400,
                 # Completion tokens include state size
-                "completion_tokens": 50,
-                "total_tokens": 110
+                "completion_tokens": 100,
+                "total_tokens": 500
             }
         },
     ]
