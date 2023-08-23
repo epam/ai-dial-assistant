@@ -213,7 +213,7 @@ def process_user_request():
         max_completion_tokens = max(max_user_reply_size, limits["max_addons_dialog_tokens"] - estimated_dialog_size)
         model_response = model_client.generate(assistant_request | {"total_tokens": max_completion_tokens})
 
-        # replace estimate with actual value
+        # Replace estimate with actual value
         dialog_size = model_response["usage"]["total_tokens"] - prompt_tokens
 ```
 
@@ -253,6 +253,7 @@ def send_assistant_request():
                 }
             },
             "usage": {
+                # Prompt tokens include assistant's system message size
                 "prompt_tokens": 60,
                 # Completion tokens include state size
                 "completion_tokens": 50,
@@ -276,10 +277,13 @@ def send_assistant_request():
     # prompt_size = system message size + last user message size
     prompt_size = tokenizer.get_token_count(history[0]["content"]) + tokenizer.get_token_count(prompt["content"])
 
+    # UI should not allow to enter more tokens than max_prompt_size
     if prompt_size > max_prompt_size:
         raise Exception(f'Prompt is too long. Max tokens: {max_prompt_size}, actual: {prompt_size}')
 
     previous_assistant_response = history[-1]
+    # Assistant response contains usage information.
+    # Appropriate tokenizer should be used if there is no previous assistant response.
     history_size = previous_assistant_response["usage"]["total_tokens"]
 
     if history_size + prompt_size > limits["max_total_tokens"]:
