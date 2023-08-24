@@ -152,9 +152,10 @@ def process_user_request():
     # The following commands are available to reply to user or find out the answer to the user's question:
     # ...
 
+    user_messages = [m for m in user_request["messages"] if m["role"] != "system"]
     assistant_request = {
         "model": 'gpt-4',
-        "messages": [assistant_system_message] + [m for m in user_request["messages"] if m["role"] != "system"]
+        "messages": [assistant_system_message] + user_messages
     }
 
     model_client = ModelClient(user_request["model"])
@@ -169,7 +170,7 @@ def process_user_request():
     discarded_message_count = model_response["statistics"]["discarded_messages"]
     assistant_request = {
         "model": 'gpt-4',
-        "messages": [assistant_system_message] + [m for m in user_request["messages"][discarded_message_count:] if m["role"] != "system"]
+        "messages": [assistant_system_message] + user_messages[discarded_message_count:]
     }
 
     usage = model_response["usage"]
