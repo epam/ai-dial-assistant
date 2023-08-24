@@ -183,6 +183,8 @@ def process_user_request():
         estimated_dialog_size = dialog_size + limits["responses_array_overhead"]
         for command in commands:
             if command.name == "reply":
+                # This response object is only to demonstrate what fields can be returned from the core assistant logic.
+                # The data should be wrapped into the Universal API response.
                 return {
                     # If there are more reserved tokens left for dialog with addons than available for client reply
                     # we may end up with longer response to user than expected.
@@ -254,15 +256,11 @@ def send_assistant_request():
                     ]
                 }
             },
-            "usage": {
-                # Prompt tokens include assistant's system message size
-                "prompt_tokens": 400,
-                # Completion tokens include state size
-                "completion_tokens": 100,
-                "total_tokens": 500
-            }
+            # The property is set manually from usage to track message size
+            "completion_tokens": 100
         },
     ]
+    
     tokenizer = get_tokenizer(user_request["model"])
     limits = limits_service.get_limits(user_request["model"], user_request["addons"])
     # limits =
@@ -270,9 +268,15 @@ def send_assistant_request():
     #     "max_total_tokens": 2000
     #     "max_system_messages": 1
     # }
+    # or
+    # {
+    #     "max_prompt_tokens": 2000,
+    #     "max_completion_tokens": 1000,
+    #     "max_system_messages": 0
+    # }
 
     # Leave some tokens for completion (e.g. ~40% of max_total_tokens)
-    max_prompt_size = int(limits["max_total_tokens"] * 0.6)
+    max_prompt_size = int(limits["max_total_tokens"] * 0.6) if "max_total_tokens" in limits else limits["max_prompt_tokens"]
     prompt = {
         "role": "user",
         "content": "What was EPAM's income in 2021?"
@@ -285,14 +289,15 @@ def send_assistant_request():
         raise Exception(f'Prompt is too long. Max tokens: {max_prompt_size}, actual: {prompt_size}')
 
     history_size = sum(
-        m["usage"]["completion_tokens"] if m["role"] == "assistant" else tokenizer.get_token_count(m["content"])
+        m["completion_tokens"] if m["role"] == "assistant" else tokenizer.get_token_count(m["content"])
         for m in history[1:]
     )
 
-    if history_size + prompt_size > limits["max_total_tokens"]:
+    if history_size + prompt_size > max_prompt_size:
         print("Warning: The history doesn't fit into the model and as a result, some old messages will be ignored.")
 
-    user_request: dict = {
+    user_request = {
+        # Set max_prompt_tokens to truncate history
         "max_prompt_tokens": max_prompt_size,
         "model": 'gpt-4',
         "messages": history + [prompt],
@@ -303,10 +308,66 @@ def send_assistant_request():
         ]
     }
 
-    assistant_response = assistant_service.generate(user_request)["choices"][0]
+    assistant_response = assistant_service.generate(user_request)
+    # assistant_response =
+    # {
+    #   "choices": [
+    #     {
+    #       "index": "0",
+    #       "message": {
+    #         "role": "assistant",
+    #         "content": "EPAM's income before provision for income taxes in 2021 was $533,392,000.",
+    #         "custom_content": {
+    #           "state": {
+    #             "invocations": [
+    #               {
+    #                 "index": 0,
+    #                 "request": "{\"commands\": [{\"command\": \"run-plugin\", \"args\": [\"epam-10k-semantic-search\", \"What was EPAM's income in 2021?\"]}]}",
+    #                 "response": "{\"responses\": [{\"status\": \"SUCCESS\", \"response\": \"EPAM's income before provision for income taxes in 2021 was $533,392,000.\"}]}"
+    #               }
+    #             ]
+    #           }
+    #         }
+    #         ...
+    #       },
+    #       "finish_reason": "stop"
+    #     }
+    #   ],
+    #   "usage": {
+    #     "prompt_tokens": 2000,
+    #     "completion_tokens": 100,
+    #     "total_tokens": 2100
+    #   },
+    #   "discarded_messages": 1
+    # }
 
-    finish_reason = assistant_response["finish_reason"]
-    print(f'Got response from assistant with finish_reason {finish_reason}: {assistant_response["message"]["content"]}')
+    # Truncate history if discarded_messages > 0 but never drop system message if present (index 0 in this example)
+    history = [history[0]] + history[assistant_response["discarded_messages"] + 1:]
+    assistant_message = assistant_response["choices"][0]["message"]
+
+    # Save assistant message size to calculate history size
+    assistant_message["completion_tokens"] = assistant_response["usage"]["completion_tokens"]
+
+    history.append(assistant_message)
+
+    next_prompt = {
+        "role": "user",
+        "content": "Was it more than in 2022?"
+    }
+
+    # Do calculations and verifications
+    # ...
+
+    next_user_request = {
+        "max_prompt_tokens": max_prompt_size,
+        "model": 'gpt-4',
+        "messages": history + [next_prompt],
+        "addons": [
+            {
+                "url": "https://epam-qna-application.staging.deltixhub.io/semantic-search/.well-known/ai-plugin.json"
+            }
+        ]
+    }
 ```
 
 ### Notes
