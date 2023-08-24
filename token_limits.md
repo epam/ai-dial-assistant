@@ -116,7 +116,7 @@ If exceeded, the model should explain to the user that it cannot process the req
 ## Assistant logic
 
 ```python
-def process_user_request():
+def process_user_request(user_request):
     # user_request: dict = {
     #     "max_prompt_tokens": 100,
     #     "model": 'gpt-4',
@@ -232,142 +232,146 @@ support [function calls](https://openai.com/blog/function-calling-and-other-api-
 * Length of generated message by assistant may contain more tokens than requested if we choose not to use tokenizers in the assistant.
 
 ```python
-def send_assistant_request():
-    history = [
-        {
-            "role": "system",
-            "content": "Give answers based on facts only"
-        },
-        {
-            "role": "user",
-            "content": "What is EPAM?"
-        },
-        {
-            "role": "assistant",
-            "content": "EPAM is a leading digital transformation services and product engineering company, providing digital platform engineering and software development services to customers located around the world, primarily in North America, Europe, and Asia. They deliver business and technology transformation from start to finish, leveraging agile methodologies, customer collaboration frameworks, engineering excellence tools, hybrid teams, and their award-winning proprietary global delivery platform. They focus on building long-term partnerships with their customers in a market that is constantly challenged by the pressures of digitization through innovative strategy and scalable software solutions.",
-            "custom_content": {
-                "state": {
-                    "invocations": [
-                        {
-                            "index": 0,
-                            "request": "{\"commands\": [{\"command\": \"run-plugin\", \"args\": [\"epam-10k-semantic-search\", \"What is EPAM?\"]}]}",
-                            "response": "{\"responses\": [{\"status\": \"SUCCESS\", \"response\": \"EPAM is a leading digital transformation services and product engineering company, providing digital platform engineering and software development services to customers located around the world, primarily in North America, Europe, and Asia. They deliver business and technology transformation from start to finish, leveraging agile methodologies, customer collaboration frameworks, engineering excellence tools, hybrid teams, and their award-winning proprietary global delivery platform. They focus on building long-term partnerships with their customers in a market that is constantly challenged by the pressures of digitization through innovative strategy and scalable software solutions.\"}]}"
-                        }
-                    ]
-                }
-            },
-            # The property is set manually from usage to track message size
-            "completion_tokens": 100
-        },
-    ]
-    
-    tokenizer = get_tokenizer(user_request["model"])
-    limits = limits_service.get_limits(user_request["model"], user_request["addons"])
-    # limits =
-    # {
-    #     "max_total_tokens": 2000
-    #     "max_system_messages": 1
-    # }
-    # or
-    # {
-    #     "max_prompt_tokens": 2000,
-    #     "max_completion_tokens": 1000,
-    #     "max_system_messages": 0
-    # }
+def send_assistant_request(model, addons, messages):
+    limits = limits_service.get_limits(model, addons)
 
-    # Leave some tokens for completion (e.g. ~40% of max_total_tokens)
+    # For models with shared context, reserve some tokens for completion (e.g. ~40% of max_total_tokens)
     max_prompt_size = int(limits["max_total_tokens"] * 0.6) if "max_total_tokens" in limits else limits["max_prompt_tokens"]
-    prompt = {
+    
+    # Next user message
+    messages.append({
         "role": "user",
         "content": "What was EPAM's income in 2021?"
-    }
-    # prompt_size = system message size + last user message size
-    prompt_size = tokenizer.get_token_count(history[0]["content"]) + tokenizer.get_token_count(prompt["content"])
+    })
+    verify_messages_size(model, max_prompt_size, messages)
+    
+    user_request = build_user_request(model, messages, addons, max_prompt_size)
+    assistant_response = assistant_service.generate(user_request)
+
+    assistant_message = assistant_response["choices"][0]["message"]
+    # Save assistant message size to calculate history size
+    assistant_message["completion_tokens"] = assistant_response["usage"]["completion_tokens"]
+    messages.append(assistant_message)
+
+    messages = truncate_discarded_messages(messages, assistant_response["discarded_messages"])
+
+def verify_messages_size(model, max_prompt_size, messages):
+    tokenizer = get_tokenizer(model)
+    system_message = next((m for m in messages if m["role"] == "system"), None)
+    last_message = messages[-1]
+    # Minimum prompt size = system message size + last user message size
+    prompt_size = tokenizer.get_token_count(system_message["content"]) + tokenizer.get_token_count(last_message["content"])
 
     # UI should not allow to enter more tokens than max_prompt_size
     if prompt_size > max_prompt_size:
         raise Exception(f'Prompt is too long. Max tokens: {max_prompt_size}, actual: {prompt_size}')
 
-    history_size = sum(
+    messages_size = sum(
         m["completion_tokens"] if m["role"] == "assistant" else tokenizer.get_token_count(m["content"])
-        for m in history[1:]
+        for m in messages
     )
 
-    if history_size + prompt_size > max_prompt_size:
+    if messages_size > max_prompt_size:
         print("Warning: The history doesn't fit into the model and as a result, some old messages will be ignored.")
 
-    user_request = {
+def build_user_request(model, messages, addons, max_prompt_size):
+    return {
         # Set max_prompt_tokens to truncate history
         "max_prompt_tokens": max_prompt_size,
-        "model": 'gpt-4',
-        "messages": history + [prompt],
-        "addons": [
-            {
-                "url": "https://epam-qna-application.staging.deltixhub.io/semantic-search/.well-known/ai-plugin.json"
-            }
-        ]
+        "model": model,
+        "messages": messages,
+        "addons": addons
     }
 
-    assistant_response = assistant_service.generate(user_request)
-    # assistant_response =
-    # {
-    #   "choices": [
-    #     {
-    #       "index": "0",
-    #       "message": {
-    #         "role": "assistant",
-    #         "content": "EPAM's income before provision for income taxes in 2021 was $533,392,000.",
-    #         "custom_content": {
-    #           "state": {
-    #             "invocations": [
-    #               {
-    #                 "index": 0,
-    #                 "request": "{\"commands\": [{\"command\": \"run-plugin\", \"args\": [\"epam-10k-semantic-search\", \"What was EPAM's income in 2021?\"]}]}",
-    #                 "response": "{\"responses\": [{\"status\": \"SUCCESS\", \"response\": \"EPAM's income before provision for income taxes in 2021 was $533,392,000.\"}]}"
-    #               }
-    #             ]
-    #           }
-    #         }
-    #         ...
-    #       },
-    #       "finish_reason": "stop"
-    #     }
-    #   ],
-    #   "usage": {
-    #     "prompt_tokens": 2000,
-    #     "completion_tokens": 100,
-    #     "total_tokens": 2100
-    #   },
-    #   "discarded_messages": 1
-    # }
+def truncate_discarded_messages(messages, discarded_messages):
+    new_messages = []
+    for index, message in enumerate(messages):
+        if discarded_messages > 0 and message["role"] != "system":
+            discarded_messages -= 1
+        else:
+            new_messages.append(message)
 
-    # Truncate history if discarded_messages > 0 but never drop system message if present (index 0 in this example)
-    history = [history[0]] + history[assistant_response["discarded_messages"] + 1:]
-    assistant_message = assistant_response["choices"][0]["message"]
+    return new_messages
+```
 
-    # Save assistant message size to calculate history size
-    assistant_message["completion_tokens"] = assistant_response["usage"]["completion_tokens"]
+Example of variables
+```python
+model = "gpt-4"
 
-    history.append(assistant_message)
-
-    next_prompt = {
+addons = [
+    {
+        "url": "https://epam-qna-application.staging.deltixhub.io/semantic-search/.well-known/ai-plugin.json"
+    }
+]
+messages = [
+    {
+        "role": "system",
+        "content": "Give answers based on facts only"
+    },
+    {
         "role": "user",
-        "content": "Was it more than in 2022?"
-    }
-
-    # Do calculations and verifications
-    # ...
-
-    next_user_request = {
-        "max_prompt_tokens": max_prompt_size,
-        "model": 'gpt-4',
-        "messages": history + [next_prompt],
-        "addons": [
-            {
-                "url": "https://epam-qna-application.staging.deltixhub.io/semantic-search/.well-known/ai-plugin.json"
+        "content": "What is EPAM?"
+    },
+    {
+        "role": "assistant",
+        "content": "EPAM is a leading digital transformation services and product engineering company, providing digital platform engineering and software development services to customers located around the world, primarily in North America, Europe, and Asia. They deliver business and technology transformation from start to finish, leveraging agile methodologies, customer collaboration frameworks, engineering excellence tools, hybrid teams, and their award-winning proprietary global delivery platform. They focus on building long-term partnerships with their customers in a market that is constantly challenged by the pressures of digitization through innovative strategy and scalable software solutions.",
+        "custom_content": {
+            "state": {
+                "invocations": [
+                    {
+                        "index": 0,
+                        "request": "{\"commands\": [{\"command\": \"run-plugin\", \"args\": [\"epam-10k-semantic-search\", \"What is EPAM?\"]}]}",
+                        "response": "{\"responses\": [{\"status\": \"SUCCESS\", \"response\": \"EPAM is a leading digital transformation services and product engineering company, providing digital platform engineering and software development services to customers located around the world, primarily in North America, Europe, and Asia. They deliver business and technology transformation from start to finish, leveraging agile methodologies, customer collaboration frameworks, engineering excellence tools, hybrid teams, and their award-winning proprietary global delivery platform. They focus on building long-term partnerships with their customers in a market that is constantly challenged by the pressures of digitization through innovative strategy and scalable software solutions.\"}]}"
+                    }
+                ]
             }
-        ]
+        },
+        # The property is set manually from usage to track message size
+        "completion_tokens": 100
+    },
+]
+
+limits = {
+    "max_total_tokens": 2000,
+    "max_system_messages": 1
+}
+# or
+# {
+#     "max_prompt_tokens": 2000,
+#     "max_completion_tokens": 1000,
+#     "max_system_messages": 0
+#}
+
+assistant_response = {
+  "choices": [
+    {
+      "index": "0",
+      "message": {
+        "role": "assistant",
+        "content": "EPAM's income before provision for income taxes in 2021 was $533,392,000.",
+        "custom_content": {
+          "state": {
+            "invocations": [
+              {
+                "index": 0,
+                "request": "{\"commands\": [{\"command\": \"run-plugin\", \"args\": [\"epam-10k-semantic-search\", \"What was EPAM's income in 2021?\"]}]}",
+                "response": "{\"responses\": [{\"status\": \"SUCCESS\", \"response\": \"EPAM's income before provision for income taxes in 2021 was $533,392,000.\"}]}"
+              }
+            ]
+          }
+        }
+        # ...
+      },
+      "finish_reason": "stop"
     }
+  ],
+  "usage": {
+    "prompt_tokens": 2000,
+    "completion_tokens": 100,
+    "total_tokens": 2100
+  },
+  "discarded_messages": 1
+}
 ```
 
 ### Notes
