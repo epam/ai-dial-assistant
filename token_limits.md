@@ -303,6 +303,7 @@ addons = [
         "url": "https://epam-qna-application.staging.deltixhub.io/semantic-search/.well-known/ai-plugin.json"
     }
 ]
+
 messages = [
     {
         "role": "system",
