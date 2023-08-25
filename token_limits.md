@@ -398,7 +398,8 @@ a client has a suitable tokenizer for the model, it might not be able to accurat
 
 Here are some ideas on how this can be addressed:
 
-* Support only requests with an automatic context reduction strategy, so all historical messages will be discarded by the model.
+* Support only requests with an automatic context reduction strategy, so old messages that do not fit into context will
+be discarded by the model.
 * Publish the message size in usage stats.
 * Introduce the message size in a new dedicated field.
 * Manage states separately from messages. If states don't fit into the allocated buffer, they will be dropped by the assistant.
