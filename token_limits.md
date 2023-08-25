@@ -386,3 +386,20 @@ Continuation of aborted token sequence is not currently supported.
 
 The assistant interacts with each add-on in a separate conversation. To provide summary of all collected information
 that separate conversation in a model with shared context should have a reserved amount of tokens for response.
+
+# History size calculation
+
+The assistant, applications, and models share the same unified API, and the assistant is essentially a wrapper around
+a model that adds extra capabilities. Ideally, minimal changes should be required in client code that interacts with
+the model to utilize the assistant. According to the design described above, dialogue with add-ons is included as part
+of the assistant's response that eventually goes into user history. Due to the internal nature of the message state, its
+schema isn't intended to be defined in the API and may vary from one implementation to another. This means that even if
+a client has a suitable tokenizer for the model, it might not be able to accurately calculate history size.
+
+Here are some ideas on how this can be addressed:
+
+* Support only requests with an automatic context reduction strategy, so all historical messages will be discarded by the model.
+* Publish the message size in usage stats.
+* Introduce the message size in a new dedicated field.
+* Manage states separately from messages. If states don't fit into the allocated buffer, they will be dropped by the assistant.
+However, this would mean that historical replies would lack context.
