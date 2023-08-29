@@ -133,6 +133,7 @@ async def plain_response(chunks: AsyncIterator[Any]) -> Response:
         "object": "chat.completion",
         "created": int(time.time()),
         "choices": [{"index": 0, "message": message, "finish_reason": "stop"}],
+        "usage": {}  # required by langchain
     })
 
 
