@@ -5,6 +5,7 @@ from aiohttp import hdrs
 from langchain.requests import Requests
 from langchain.tools.openapi.utils.api_models import APIOperation
 
+from open_api import logger
 from protocol.commands.base import ResultObject, JsonResult, TextResult
 
 
@@ -76,9 +77,13 @@ class OpenAPIEndpointRequester:
     ) -> ResultObject:
         request_args = self.deserialize_json_input(args)
         # "a" for async methods
-        requests = Requests() if self.plugin_auth is None else Requests(headers={hdrs.AUTHORIZATION: self.plugin_auth})
+        requests = (
+            Requests()
+            if self.plugin_auth is None
+            else Requests(headers={hdrs.AUTHORIZATION: self.plugin_auth})
+        )
         method = getattr(requests, "a" + self.operation.method.value)
-        print(f"Request args: {request_args}")
+        logger.info(f"Request args: {request_args}")
         async with method(**request_args) as response:
             if response.status != 200:
                 method_str = str(self.operation.method.value)

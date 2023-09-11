@@ -3,8 +3,6 @@ from typing import Any
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from typing_extensions import override
 
-from utils.printing import print_ai
-
 
 class CallbackWithNewLines(StreamingStdOutCallbackHandler):
     prev: str
@@ -30,4 +28,4 @@ class CallbackWithNewLines(StreamingStdOutCallbackHandler):
             token = token[:-1]
 
         s = token.replace("\\n", "\n").replace('\\"', '"')
-        print_ai(s, end="")
+        print(s, end="")

@@ -7,12 +7,13 @@ from langchain.tools import OpenAPISpec
 from pydantic import BaseModel, parse_obj_as
 from starlette.status import HTTP_401_UNAUTHORIZED
 
+from utils import logger
 from utils.addon_token_source import AddonTokenSource
 
 
 class AuthConf(BaseModel):
     type: str
-    authorization_type: str = 'bearer'
+    authorization_type: str = "bearer"
 
 
 class ApiConf(BaseModel):
@@ -41,32 +42,42 @@ class OpenAIPluginInfo(BaseModel):
     auth: str | None
 
 
-def get_plugin_auth(auth_type: str, authorization_type: str, url: str, token_source: AddonTokenSource) -> str | None:
-    if auth_type == 'none':
+def get_plugin_auth(
+    auth_type: str, authorization_type: str, url: str, token_source: AddonTokenSource
+) -> str | None:
+    if auth_type == "none":
         return token_source.default_auth
 
-    if auth_type == 'service_http':
+    if auth_type == "service_http":
         service_token = token_source.get_token(url)
         if service_token is None:
-            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail=f'Missing token for {url}')
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED, detail=f"Missing token for {url}"
+            )
 
         # Capitalizing because Wolfram, for instance, doesn't like lowercase bearer
         return f"{authorization_type.capitalize()} {service_token}"
 
-    raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail=f'Unknown auth type {auth_type}')
+    raise HTTPException(
+        status_code=HTTP_401_UNAUTHORIZED, detail=f"Unknown auth type {auth_type}"
+    )
 
 
-async def get_open_ai_plugin_info(addon_url: str, token_source: AddonTokenSource) -> OpenAIPluginInfo:
+async def get_open_ai_plugin_info(
+    addon_url: str, token_source: AddonTokenSource
+) -> OpenAIPluginInfo:
     """Takes url pointing to .well-known/ai-plugin.json file"""
     requests = Requests()
-    print(f"Fetching plugin info from {addon_url}")
+    logger.info(f"Fetching plugin info from {addon_url}")
     ai_plugin = await _parse_ai_plugin_conf(requests, addon_url)
     # Resolve relative url
     ai_plugin.api.url = urljoin(addon_url, ai_plugin.api.url)
-    print(f"Fetching plugin spec from {ai_plugin.api.url}")
+    logger.info(f"Fetching plugin spec from {ai_plugin.api.url}")
     open_api = await _parse_openapi_spec(requests, ai_plugin.api.url)
 
-    addon_auth = get_plugin_auth(ai_plugin.auth.type, ai_plugin.auth.authorization_type, addon_url, token_source)
+    addon_auth = get_plugin_auth(
+        ai_plugin.auth.type, ai_plugin.auth.authorization_type, addon_url, token_source
+    )
 
     return OpenAIPluginInfo(ai_plugin=ai_plugin, open_api=open_api, auth=addon_auth)
 

@@ -10,8 +10,6 @@ from langchain.chat_models import ChatOpenAI
 from langchain.schema import AIMessage, BaseMessage, LLMResult
 from typing_extensions import override
 
-from utils.token_counter import TokenCounter
-
 
 class AsyncChunksCallbackHandler(AsyncCallbackHandler):
     def __init__(self, queue: Queue[str | BaseException | None]):
@@ -60,19 +58,12 @@ class ModelClient(ABC):
     ):
         self.model = model
         self.stop = stop
-        self.token_counter = TokenCounter()
         self.buffer_size = buffer_size
 
     def generate(self, messages: List[BaseMessage]) -> AIMessage:
         llm_result = self.model.generate([messages], self.stop)
         content = llm_result.generations[0][-1].text
         response = AIMessage(content=content)
-        self.token_counter.update(
-            self.model.model_name,
-            self.model.get_num_tokens_from_messages(messages),
-            self.model.get_num_tokens_from_messages([response]),
-        )
-        self.token_counter.print()
         return response
 
     async def agenerate(self, messages: List[BaseMessage]) -> AsyncIterator[str]:
@@ -80,7 +71,9 @@ class ModelClient(ABC):
             openai.aiosession.set(session)
             queue = Queue[str | None]()
             callback = AsyncChunksCallbackHandler(queue)
-            producer = create_task(self.model.agenerate([messages], self.stop, callbacks=[callback]))
+            producer = create_task(
+                self.model.agenerate([messages], self.stop, callbacks=[callback])
+            )
             while True:
                 token = await callback.queue.get()
                 if token is None:
@@ -91,9 +84,3 @@ class ModelClient(ABC):
                 yield token
 
             await producer
-        # self.token_counter.update(
-        #     self.model.model_name,
-        #     self.model.get_num_tokens_from_messages(messages),
-        #     self.model.get_num_tokens_from_messages([AIMessage(content=content)]),
-        # )
-        # self.token_counter.print()

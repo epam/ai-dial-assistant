@@ -1,5 +1,6 @@
 from asyncio import Task
 
+from chains.json_stream import logger
 from chains.json_stream.json_root import JsonRoot
 
 
@@ -16,5 +17,4 @@ class ParsingContext:
         try:
             await self._task
         except Exception as e:
-            print(f"Parser error: {e}")
-
+            logger.error(f"Parser error: {e}")

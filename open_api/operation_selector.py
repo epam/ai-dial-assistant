@@ -55,19 +55,3 @@ def collect_operations(spec: OpenAPISpec, spec_url: str) -> OpenAPIOperations:
             add_operation(spec, path, "post")
 
     return operations
-
-
-def select_open_api_operation(
-    api_description: str, ops: OpenAPIOperations, query: str
-) -> OpenAPIResponse:
-    api_schema = "\n\n".join([op.to_typescript() for op in ops.values()])
-
-    args = parse_args()
-    model = create_openai_chat(args.openai_conf, get_openai_key())
-
-    client = ModelClient(model=model, buffer_size=args.chat_conf.buffer_size)
-    message = client.generate(
-        [OPEN_API_SELECTOR_MESSAGE.format(api_description=api_description, api_schema=api_schema, query=query)]
-    )
-
-    return OpenAPIResponseWrapper.parse_str(message.content)

@@ -4,6 +4,7 @@ from typing import List, AsyncIterator, Any
 from langchain.prompts.chat import HumanMessagePromptTemplate
 from langchain.schema import AIMessage, BaseMessage, HumanMessage
 
+from chains import logger
 from chains.callbacks.chain_callback import ChainCallback
 from chains.callbacks.command_callback import CommandCallback
 from chains.callbacks.result_callback import ResultCallback
@@ -17,7 +18,6 @@ from chains.request_reader import RequestReader
 from protocol.command_result import responses_to_text, CommandResult, Status
 from protocol.commands.base import FinalCommand, Command
 from protocol.execution_context import ExecutionContext
-from utils.printing import print_base_message, print_exception
 
 
 class TextCollector(AsyncIterator[str]):
@@ -52,10 +52,12 @@ class CommandChain:
         self.name = name
 
     def _print(self, message: BaseMessage) -> BaseMessage:
-        print_base_message(f"[{self.name}] ", message)
+        logger.debug(f"[{self.name}] {message}")
         return message
 
-    async def run_chat(self, history: List[BaseMessage], callback: ChainCallback) -> str:
+    async def run_chat(
+        self, history: List[BaseMessage], callback: ChainCallback
+    ) -> str:
         for message in history:
             self._print(message)
 
@@ -67,7 +69,9 @@ class CommandChain:
                 raise Exception(f"Max message count of {MAX_MESSAGE_COUNT} exceeded")
             message_count += 1
 
-            token_stream = TextCollector(self.model_client.agenerate(self._reinforce_last_message(history)))
+            token_stream = TextCollector(
+                self.model_client.agenerate(self._reinforce_last_message(history))
+            )
             tokenator = Tokenator(token_stream)
             await CommandChain._skip_text(tokenator)
             parsing_content = await JsonParser.parse(tokenator)
@@ -88,13 +92,18 @@ class CommandChain:
                         arg = await anext(args)
                         result = await CommandChain._to_result(
                             arg if isinstance(arg, JsonString) else arg.to_string_tokens(),  # type: ignore
-                            callback.result_callback())
+                            # Some relatively large number to avoid CxSAST warning about potential DoS attack.
+                            # Later, the upper limit will be provided by the DIAL Core (proxy).
+                            32000,
+                            callback.result_callback(),
+                        )
                         await callback.on_end()
                         self._print(AIMessage(content=json.dumps(root_node.value())))
                         return result
                     else:
                         response = await CommandChain._execute_command(
-                            command_name, command, args, callback.command_callback())
+                            command_name, command, args, callback.command_callback()
+                        )
 
                         responses.append(response)
 
@@ -104,10 +113,16 @@ class CommandChain:
                     self._print(AIMessage(content=json.dumps(root_node.value())))
                     return ""
 
-                fixed_model_response = json.dumps({
-                    # Remove final command when it's generated before the result is known to the model
-                    "commands": [c for c in root_node.value()["commands"] if c["command"] != final_command_name]
-                })
+                fixed_model_response = json.dumps(
+                    {
+                        # Remove final command when it's generated before the result is known to the model
+                        "commands": [
+                            c
+                            for c in root_node.value()["commands"]
+                            if c["command"] != final_command_name
+                        ]
+                    }
+                )
 
                 history.append(self._print(AIMessage(content=fixed_model_response)))
 
@@ -116,8 +131,10 @@ class CommandChain:
                 await callback.on_state(fixed_model_response, response_text)
                 retry_count = 0
             except Exception as e:
-                print_exception()
-                await callback.on_error("Error" if retry_count == 0 else f"Error (retry {retry_count})", e)
+                logger.exception("Failed to process model response")
+                await callback.on_error(
+                    "Error" if retry_count == 0 else f"Error (retry {retry_count})", e
+                )
 
                 retry_count += 1
                 if retry_count > MAX_RETRY_COUNT:
@@ -127,13 +144,17 @@ class CommandChain:
 
                 if token_stream.buffer:
                     history.append(self._print(AIMessage(content=token_stream.buffer)))
-                    history.append(self._print(HumanMessage(content=json.dumps({"error": str(e)}))))
+                    history.append(
+                        self._print(HumanMessage(content=json.dumps({"error": str(e)})))
+                    )
 
     def _reinforce_last_message(self, history: list[BaseMessage]) -> list[BaseMessage]:
         return history[:-1] + [self.resp_prompt.format(response=history[-1].content)]
 
     @staticmethod
-    async def _to_args(args: AsyncIterator[JsonNode], callback: CommandCallback) -> AsyncIterator[Any]:
+    async def _to_args(
+        args: AsyncIterator[JsonNode], callback: CommandCallback
+    ) -> AsyncIterator[Any]:
         args_callback = callback.args_callback()
         await args_callback.on_args_start()
         async for arg in args:
@@ -148,18 +169,32 @@ class CommandChain:
         await args_callback.on_args_end()
 
     @staticmethod
-    async def _to_result(arg: AsyncIterator[str], callback: ResultCallback) -> str:
+    async def _to_result(
+        arg: AsyncIterator[str],
+        max_model_completion_tokens: int,
+        callback: ResultCallback,
+    ) -> str:
         result = ""
+        token_count = 0
         await callback.on_start()
         async for token in arg:
+            token_count += 1
+            if token_count > max_model_completion_tokens:
+                raise Exception(
+                    f"Max token count of {max_model_completion_tokens} exceeded in the reply"
+                )
             await callback.on_result(token)
             result += token
         await callback.on_end()
         return result
 
     @staticmethod
-    async def _execute_command(name: str, command: Command, args: AsyncIterator[JsonNode], callback: CommandCallback)\
-            -> CommandResult:
+    async def _execute_command(
+        name: str,
+        command: Command,
+        args: AsyncIterator[JsonNode],
+        callback: CommandCallback,
+    ) -> CommandResult:
         try:
             await callback.on_command(name)
             args_list = [arg async for arg in CommandChain._to_args(args, callback)]
@@ -168,7 +203,7 @@ class CommandChain:
 
             return {"status": Status.SUCCESS, "response": response.text}
         except Exception as e:
-            print_exception()
+            logger.exception(f"Failed to execute command {name}")
             await callback.on_error(e)
             return {"status": Status.ERROR, "response": str(e)}
 
