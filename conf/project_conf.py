@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Annotated, List, Literal, Optional, Type, TypeVar
 
 import yaml
-from pydantic import BaseModel, Field, parse_obj_as, root_validator
+from pydantic import BaseModel, Field, parse_obj_as, root_validator, PositiveInt
 
 from protocol.commands.base import CommandConstructor, resolve_constructor
 from utils.yaml_loader import Loader
@@ -24,7 +24,7 @@ class OpenAIConf(BaseModel):
 
 class ChatConf(BaseModel):
     streaming: bool = True
-    buffer_size: int
+    buffer_size: PositiveInt
 
 
 class CommandConf(BaseModel):

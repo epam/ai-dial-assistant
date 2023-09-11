@@ -6,10 +6,7 @@
   "description_for_human":"Access computation, math, curated knowledge & real-time data through Wolfram|Alpha and Wolfram Language.",
   "auth":{
     "type":"service_http",
-    "authorization_type":"bearer",
-    "verification_tokens":{
-      "openai":"39feb25c54a6427a97c01dbd1342cfd9"
-    }
+    "authorization_type":"bearer"
   },
   "api":{
     "url":"apispec.json",
