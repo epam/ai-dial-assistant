@@ -1,0 +1,7 @@
+-r requirements.txt
+black==23.3.0
+colorama==0.4.6
+flake8==6.0.0
+pyright==1.1.314
+pytest==7.2.2
+python-dotenv==1.0.0
