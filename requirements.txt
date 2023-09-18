@@ -1,5 +1,6 @@
 ./dial_sdk/aidial_sdk-0.0.0-py3-none-any.whl
 aiohttp~=3.8.4
+fastapi==0.98.0
 Jinja2==3.1.2
 langchain==0.0.216
 openai==0.28.0
