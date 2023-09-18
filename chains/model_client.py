@@ -69,7 +69,7 @@ class ModelClient(ABC):
     async def agenerate(self, messages: List[BaseMessage]) -> AsyncIterator[str]:
         async with ClientSession(read_bufsize=self.buffer_size) as session:
             openai.aiosession.set(session)
-            queue = Queue[str | None]()
+            queue = Queue[str | BaseException | None]()
             callback = AsyncChunksCallbackHandler(queue)
             producer = create_task(
                 self.model.agenerate([messages], self.stop, callbacks=[callback])

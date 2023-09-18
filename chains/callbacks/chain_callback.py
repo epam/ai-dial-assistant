@@ -1,28 +1,24 @@
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 
 from chains.callbacks.command_callback import CommandCallback
 from chains.callbacks.result_callback import ResultCallback
 
 
-class ChainCallback:
+class ChainCallback(ABC):
     """Callback for reporting command chain"""
 
-    async def on_start(self):
-        """Called when the chain starts"""
-
+    @abstractmethod
     def command_callback(self) -> CommandCallback:
         """Returns a callback for reporting a command"""
-        return CommandCallback()
 
-    async def on_end(self):
-        """Called when the chain ends"""
-
-    async def on_state(self, request: str, response: str):
+    @abstractmethod
+    def on_state(self, request: str, response: str):
         """Report an AI message"""
 
+    @abstractmethod
     def result_callback(self) -> ResultCallback:
         """Returns a callback for reporting a result"""
-        return ResultCallback()
 
-    async def on_error(self, title: str, error: Exception):
+    @abstractmethod
+    def on_error(self, title: str, error: Exception):
         """Called when an error occurs"""

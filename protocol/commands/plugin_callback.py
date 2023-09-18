@@ -1,3 +1,6 @@
+from types import TracebackType
+from typing import Callable
+
 from typing_extensions import override
 
 from chains.callbacks.args_callback import ArgsCallback
@@ -7,13 +10,22 @@ from chains.callbacks.result_callback import ResultCallback
 from protocol.commands.base import ExecutionCallback, ResultObject, ResultType
 
 
-class PluginCommandCallback(CommandCallback):
-    def __init__(self, callback: ExecutionCallback):
+class PluginExecutionCallback(ExecutionCallback):
+    def __init__(self, callback: Callable[[str], None]):
         self.callback = callback
 
     @override
-    async def on_command(self, command: str):
-        await self.callback(f"```javascript\n{command}")
+    def on_token(self, token: str):
+        self.callback(token)
+
+
+class PluginCommandCallback(CommandCallback):
+    def __init__(self, callback: Callable[[str], None]):
+        self.callback = callback
+
+    @override
+    def on_command(self, command: str):
+        self.callback(f"```javascript\n{command}")
 
     @override
     def args_callback(self) -> ArgsCallback:
@@ -21,29 +33,39 @@ class PluginCommandCallback(CommandCallback):
 
     @override
     def execution_callback(self) -> ExecutionCallback:
-        return self.callback
+        return PluginExecutionCallback(self.callback)
 
     @override
-    async def on_result(self, result: ResultObject):
+    def on_result(self, result: ResultObject):
         syntax = "json" if result.type == ResultType.JSON else "text"
-        await self.callback(f"\n```\n```{syntax}\n{result.text}\n```\n")
+        self.callback(f"\n```\n```{syntax}\n{result.text}\n```\n")
 
     @override
-    async def on_error(self, error: Exception):
-        await self.callback(f"\n```\n```\nError: {str(error)}\n```\n")
+    def on_error(self, error: BaseException):
+        self.callback(f"\n```\n```\nError: {str(error)}\n```\n")
+
+    @override
+    def __exit__(
+        self,
+        __exc_type: type[BaseException] | None,
+        __exc_value: BaseException | None,
+        __traceback: TracebackType | None,
+    ):
+        if __exc_value is not None:
+            self.on_error(__exc_value)
 
 
 class PluginResultCallback(ResultCallback):
-    def __init__(self, callback: ExecutionCallback):
+    def __init__(self, callback: Callable[[str], None]):
         self.callback = callback
 
     @override
-    async def on_result(self, token):
-        await self.callback(token)
+    def on_result(self, token):
+        self.callback(token)
 
 
 class PluginChainCallback(ChainCallback):
-    def __init__(self, callback: ExecutionCallback):
+    def __init__(self, callback: Callable[[str], None]):
         self.callback = callback
 
     @override
@@ -53,3 +75,12 @@ class PluginChainCallback(ChainCallback):
     @override
     def result_callback(self) -> ResultCallback:
         return PluginResultCallback(self.callback)
+
+    @override
+    def on_state(self, request: str, response: str):
+        # Plugin state is not currently supported
+        pass
+
+    @override
+    def on_error(self, title: str, error: Exception):
+        pass

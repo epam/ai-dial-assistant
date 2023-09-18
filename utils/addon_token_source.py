@@ -1,9 +1,10 @@
+from typing import Mapping
+
 from aiohttp import hdrs
-from starlette.datastructures import Headers
 
 
 class AddonTokenSource:
-    def __init__(self, headers: Headers, urls: list[str]):
+    def __init__(self, headers: Mapping[str, str], urls: list[str]):
         self.headers = headers
         self.urls = {url: f"x-addon-token-{index}" for index, url in enumerate(urls)}
 

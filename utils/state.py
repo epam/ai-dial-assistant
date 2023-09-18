@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Any
 
+from aidial_sdk.chat_completion.request import Message
 from langchain.schema import BaseMessage, AIMessage, HumanMessage
 
 from prompts.dialog import MAIN_SYSTEM_DIALOG_MESSAGE
@@ -49,19 +50,16 @@ def sort_by_index(array: list[Any]):
     return array.sort(key=lambda item: int(item[CommonField.INDEX]))
 
 
-def get_system_prefix(history: list[Any]) -> str:
+def get_system_prefix(history: list[Message]) -> str:
     first_message = next(iter(history), None)
-    if (
-        first_message is not None
-        and first_message[MessageField.ROLE] == OpenAIRole.SYSTEM
-    ):
-        return first_message[CommonField.CONTENT]
+    if first_message is not None and first_message.role == OpenAIRole.SYSTEM:
+        return first_message.content
 
     return ""
 
 
 def parse_history(
-    history: list[Any],
+    history: list[Message],
     tools: dict[str, str],
 ) -> list[BaseMessage]:
     messages = [
@@ -71,11 +69,13 @@ def parse_history(
     ]
 
     for message in history:
-        if message["role"] == OpenAIRole.ASSISTANT:
+        if message.role == OpenAIRole.ASSISTANT:
             invocations = (
-                message.get(MessageField.CUSTOM_CONTENT, {})
-                .get(CustomContentField.STATE, {})
-                .get(StateField.INVOCATIONS, [])
+                message.custom_content.state.get(CustomContentField.STATE, {}).get(
+                    StateField.INVOCATIONS, []
+                )
+                if message.custom_content and message.custom_content.state
+                else []
             )
             sort_by_index(invocations)
             for invocation in invocations:
@@ -88,14 +88,14 @@ def parse_history(
                         [
                             {
                                 "command": Reply.token(),
-                                "args": [message[CommonField.CONTENT]],
+                                "args": [message.content],
                             }
                         ]
                     )
                 )
             )
 
-        if message[MessageField.ROLE] == OpenAIRole.USER:
-            messages.append(HumanMessage(content=message[CommonField.CONTENT]))
+        if message.role == OpenAIRole.USER:
+            messages.append(HumanMessage(content=message.content))
 
     return messages
