@@ -61,7 +61,6 @@ class CommandChain:
         for message in history:
             self._print(message)
 
-        await callback.on_start()
         message_count = 0
         retry_count = 0
         while True:
@@ -97,19 +96,17 @@ class CommandChain:
                             32000,
                             callback.result_callback(),
                         )
-                        await callback.on_end()
                         self._print(AIMessage(content=json.dumps(root_node.value())))
                         return result
                     else:
                         response = await CommandChain._execute_command(
-                            command_name, command, args, callback.command_callback()
+                            command_name, command, args, callback
                         )
 
                         responses.append(response)
 
                 if len(responses) == 0:
                     # Assume the model has nothing to say
-                    await callback.on_end()
                     self._print(AIMessage(content=json.dumps(root_node.value())))
                     return ""
 
@@ -128,11 +125,11 @@ class CommandChain:
 
                 response_text = responses_to_text(responses)
                 history.append(self._print(HumanMessage(content=response_text)))
-                await callback.on_state(fixed_model_response, response_text)
+                callback.on_state(fixed_model_response, response_text)
                 retry_count = 0
             except Exception as e:
                 logger.exception("Failed to process model response")
-                await callback.on_error(
+                callback.on_error(
                     "Error" if retry_count == 0 else f"Error (retry {retry_count})", e
                 )
 
@@ -156,17 +153,17 @@ class CommandChain:
         args: AsyncIterator[JsonNode], callback: CommandCallback
     ) -> AsyncIterator[Any]:
         args_callback = callback.args_callback()
-        await args_callback.on_args_start()
+        args_callback.on_args_start()
         async for arg in args:
             arg_callback = args_callback.arg_callback()
-            await arg_callback.on_arg_start()
+            arg_callback.on_arg_start()
             result = ""
             async for token in arg.to_string_tokens():  # type: ignore
-                await arg_callback.on_arg(token)
+                arg_callback.on_arg(token)
                 result += token
-            await arg_callback.on_arg_end()
+            arg_callback.on_arg_end()
             yield json.loads(result)
-        await args_callback.on_args_end()
+        args_callback.on_args_end()
 
     @staticmethod
     async def _to_result(
@@ -176,16 +173,14 @@ class CommandChain:
     ) -> str:
         result = ""
         token_count = 0
-        await callback.on_start()
         async for token in arg:
             token_count += 1
             if token_count > max_model_completion_tokens:
                 raise Exception(
                     f"Max token count of {max_model_completion_tokens} exceeded in the reply"
                 )
-            await callback.on_result(token)
+            callback.on_result(token)
             result += token
-        await callback.on_end()
         return result
 
     @staticmethod
@@ -193,18 +188,22 @@ class CommandChain:
         name: str,
         command: Command,
         args: AsyncIterator[JsonNode],
-        callback: CommandCallback,
+        chain_callback: ChainCallback,
     ) -> CommandResult:
         try:
-            await callback.on_command(name)
-            args_list = [arg async for arg in CommandChain._to_args(args, callback)]
-            response = await command.execute(args_list, callback.execution_callback())
-            await callback.on_result(response)
+            with chain_callback.command_callback() as command_callback:
+                command_callback.on_command(name)
+                args_list = [
+                    arg async for arg in CommandChain._to_args(args, command_callback)
+                ]
+                response = await command.execute(
+                    args_list, command_callback.execution_callback()
+                )
+                command_callback.on_result(response)
 
-            return {"status": Status.SUCCESS, "response": response.text}
+                return {"status": Status.SUCCESS, "response": response.text}
         except Exception as e:
             logger.exception(f"Failed to execute command {name}")
-            await callback.on_error(e)
             return {"status": Status.ERROR, "response": str(e)}
 
     @staticmethod

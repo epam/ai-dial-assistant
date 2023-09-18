@@ -9,6 +9,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Install pip requirements
 COPY requirements.txt .
+COPY dial_sdk /dial_sdk
 RUN python -m pip install -r requirements.txt
 
 WORKDIR /app
