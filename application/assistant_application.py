@@ -25,8 +25,7 @@ def get_request_args(request: ChatCompletionRequest) -> dict[str, str]:
         "temperature": request.temperature,
         # "max_tokens": payload.get("max_tokens"), ignore tokens for now, it's tricky to calculate
         "stop": request.stop,
-        # "openai_api_version": request.api_version, -- after the api_version is added to the SDK
-        "openai_api_version": "2023-03-15-preview",
+        "openai_api_version": request.api_version,
         "user": request.user,
         "headers": None if request.jwt is None else {hdrs.AUTHORIZATION: request.jwt},
     }
