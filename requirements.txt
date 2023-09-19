@@ -2,7 +2,7 @@
 aiohttp~=3.8.4
 fastapi==0.98.0
 Jinja2==3.1.2
-langchain==0.0.216
+langchain==0.0.246
 openai==0.28.0
 pydantic==1.10.9
 PyYAML~=6.0
