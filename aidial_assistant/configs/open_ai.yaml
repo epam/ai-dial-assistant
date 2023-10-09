@@ -1,0 +1,4 @@
+model: gpt-4
+temperature: 0.0
+api_base: !env OPENAI_API_BASE
+request_timeout: 300
