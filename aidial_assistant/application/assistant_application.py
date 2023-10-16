@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 
 from aidial_sdk import HTTPException
@@ -118,10 +117,10 @@ class AssistantApplication(ChatCompletion):
             try:
                 await chain.run_chat(history, callback, usage_publisher)
             except OpenAIError as e:
-                logger.error(e)
+                logger.exception("Request processing has failed.")
                 raise HTTPException(
-                    e.user_message,
-                    status_code=e.http_status,
+                    str(e),
+                    status_code=e.http_status or 500,
                     code=e.code,
                 )
 
