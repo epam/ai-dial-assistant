@@ -1,11 +1,13 @@
 from pathlib import Path
 
+from aidial_sdk import HTTPException
 from aidial_sdk.chat_completion.base import ChatCompletion
 from aidial_sdk.chat_completion.request import Addon, Request
 from aidial_sdk.chat_completion.response import Response
 from aiohttp import hdrs
-from openai import InvalidRequestError
+from openai import InvalidRequestError, OpenAIError
 
+from aidial_assistant.application import logger
 from aidial_assistant.application.args import parse_args
 from aidial_assistant.application.prompts import (
     MAIN_SYSTEM_DIALOG_MESSAGE,
@@ -112,7 +114,16 @@ class AssistantApplication(ChatCompletion):
         )
         with response.create_single_choice() as choice:
             callback = ServerChainCallback(choice)
-            await chain.run_chat(history, callback, usage_publisher)
+            try:
+                await chain.run_chat(history, callback, usage_publisher)
+            except OpenAIError as e:
+                logger.exception("Request processing has failed.")
+                raise HTTPException(
+                    str(e),
+                    status_code=e.http_status or 500,
+                    code=e.code,
+                )
+
             choice.set_state(callback.state)
 
         response.set_usage(
