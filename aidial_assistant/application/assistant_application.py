@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from aidial_sdk import HTTPException
@@ -7,7 +8,6 @@ from aidial_sdk.chat_completion.response import Response
 from aiohttp import hdrs
 from openai import InvalidRequestError, OpenAIError
 
-from aidial_assistant.application import logger
 from aidial_assistant.application.args import parse_args
 from aidial_assistant.application.prompts import (
     MAIN_SYSTEM_DIALOG_MESSAGE,
@@ -24,6 +24,8 @@ from aidial_assistant.utils.open_ai_plugin import (
     get_plugin_auth,
 )
 from aidial_assistant.utils.state import get_system_prefix, parse_history
+
+logger = logging.getLogger(__name__)
 
 
 def get_request_args(request: Request) -> dict[str, str]:

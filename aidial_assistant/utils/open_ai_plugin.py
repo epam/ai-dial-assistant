@@ -1,3 +1,4 @@
+import logging
 from typing import Mapping
 from urllib.parse import urljoin
 
@@ -8,8 +9,9 @@ from langchain.tools import OpenAPISpec
 from pydantic import BaseModel, parse_obj_as
 from starlette.status import HTTP_401_UNAUTHORIZED
 
-from aidial_assistant.utils import logger
 from aidial_assistant.utils.requests import aget
+
+logger = logging.getLogger(__name__)
 
 
 class AuthConf(BaseModel):

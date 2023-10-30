@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Dict, List, NamedTuple, Optional
 
 import aiohttp.client_exceptions
@@ -6,8 +7,9 @@ from aiohttp import hdrs
 from langchain.tools.openapi.utils.api_models import APIOperation
 
 from aidial_assistant.commands.base import JsonResult, ResultObject, TextResult
-from aidial_assistant.open_api import logger
 from aidial_assistant.utils.requests import arequest
+
+logger = logging.getLogger(__name__)
 
 
 class _ParamMapping(NamedTuple):

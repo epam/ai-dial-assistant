@@ -1,10 +1,10 @@
 import json
+import logging
 from typing import Any, AsyncIterator, Callable, List
 
 from aidial_sdk.chat_completion.request import Message, Role
 from jinja2 import Template
 
-from aidial_assistant.chain import logger
 from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
 from aidial_assistant.chain.callbacks.command_callback import CommandCallback
 from aidial_assistant.chain.callbacks.result_callback import ResultCallback
@@ -27,6 +27,8 @@ from aidial_assistant.json_stream.json_object import JsonObject
 from aidial_assistant.json_stream.json_parser import JsonParser
 from aidial_assistant.json_stream.json_string import JsonString
 from aidial_assistant.json_stream.tokenator import AsyncPeekable, Tokenator
+
+logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_COUNT = 20
 MAX_RETRY_COUNT = 2
