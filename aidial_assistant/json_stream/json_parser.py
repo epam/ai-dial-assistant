@@ -2,6 +2,7 @@ from asyncio import TaskGroup
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 
+from aidial_assistant.json_stream.exceptions import JsonParsingException
 from aidial_assistant.json_stream.json_array import JsonArray
 from aidial_assistant.json_stream.json_node import ComplexNode, JsonNode
 from aidial_assistant.json_stream.json_object import JsonObject
@@ -60,6 +61,10 @@ class JsonParser:
             node = await root.node()
             if isinstance(node, ComplexNode):
                 await node.parse(stream, node_resolver)
+        except StopAsyncIteration:
+            raise JsonParsingException(
+                "Failed to parse json: unexpected end of stream."
+            )
         finally:
             # flush the stream
             async for _ in stream:

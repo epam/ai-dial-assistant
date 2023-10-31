@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 from aidial_sdk import HTTPException
+from aidial_sdk.chat_completion import FinishReason
 from aidial_sdk.chat_completion.base import ChatCompletion
 from aidial_sdk.chat_completion.request import Addon, Request
 from aidial_sdk.chat_completion.response import Response
@@ -15,7 +16,11 @@ from aidial_assistant.application.prompts import (
 )
 from aidial_assistant.application.server_callback import ServerChainCallback
 from aidial_assistant.chain.command_chain import CommandChain, CommandDict
-from aidial_assistant.chain.model_client import ModelClient, UsagePublisher
+from aidial_assistant.chain.model_client import (
+    ModelClient,
+    ReasonLengthException,
+    UsagePublisher,
+)
 from aidial_assistant.commands.reply import Reply
 from aidial_assistant.commands.run_plugin import PluginInfo, RunPlugin
 from aidial_assistant.utils.open_ai_plugin import (
@@ -114,19 +119,25 @@ class AssistantApplication(ChatCompletion):
             request.messages,
             system_message,
         )
-        with response.create_single_choice() as choice:
-            callback = ServerChainCallback(choice)
-            try:
-                await chain.run_chat(history, callback, usage_publisher)
-            except OpenAIError as e:
-                logger.exception("Request processing has failed.")
-                raise HTTPException(
-                    str(e),
-                    status_code=e.http_status or 500,
-                    code=e.code,
-                )
+        choice = response.create_single_choice()
+        choice.open()
 
-            choice.set_state(callback.state)
+        callback = ServerChainCallback(choice)
+        finish_reason = FinishReason.STOP
+        try:
+            await chain.run_chat(history, callback, usage_publisher)
+        except ReasonLengthException:
+            finish_reason = FinishReason.LENGTH
+        except OpenAIError as e:
+            logger.exception("Request processing has failed.")
+            raise HTTPException(
+                str(e),
+                status_code=e.http_status or 500,
+                code=e.code,
+            )
+
+        choice.set_state(callback.state)
+        choice.close(finish_reason)
 
         response.set_usage(
             usage_publisher.prompt_tokens, usage_publisher.completion_tokens

@@ -7,18 +7,6 @@ from typing_extensions import override
 from aidial_assistant.json_stream.tokenator import Tokenator
 
 
-class JsonParsingException(Exception):
-    pass
-
-
-def unexpected_symbol_error(
-    char: str, char_position: int
-) -> JsonParsingException:
-    return JsonParsingException(
-        f"Failed to parse json string: unexpected symbol {char} at position {char_position}"
-    )
-
-
 class NodeResolver(ABC):
     @abstractmethod
     async def resolve(self, stream: Tokenator) -> "JsonNode":
@@ -56,18 +44,6 @@ class ComplexNode(JsonNode[T], ABC, Generic[T]):
     @abstractmethod
     async def parse(self, stream: Tokenator, dependency_resolver: NodeResolver):
         pass
-
-    @staticmethod
-    def throw_if_exception(entry):
-        if isinstance(entry, StopAsyncIteration):
-            raise JsonParsingException(
-                "Failed to parse json: unexpected end of stream."
-            )
-
-        if isinstance(entry, BaseException):
-            raise entry
-
-        return entry
 
 
 class PrimitiveNode(JsonNode[T], ABC, Generic[T]):

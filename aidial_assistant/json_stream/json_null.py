@@ -1,9 +1,7 @@
 from typing_extensions import override
 
-from aidial_assistant.json_stream.json_node import (
-    PrimitiveNode,
-    unexpected_symbol_error,
-)
+from aidial_assistant.json_stream.exceptions import unexpected_symbol_error
+from aidial_assistant.json_stream.json_node import PrimitiveNode
 
 NULL_STRING = "null"
 

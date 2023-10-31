@@ -62,6 +62,7 @@ class PluginResultCallback(ResultCallback):
 class PluginChainCallback(ChainCallback):
     def __init__(self, callback: Callable[[str], None]):
         self.callback = callback
+        self._result = ""
 
     @override
     def command_callback(self) -> PluginCommandCallback:
@@ -69,7 +70,7 @@ class PluginChainCallback(ChainCallback):
 
     @override
     def result_callback(self) -> ResultCallback:
-        return PluginResultCallback(self.callback)
+        return PluginResultCallback(self._on_result)
 
     @override
     def on_state(self, request: str, response: str):
@@ -79,3 +80,11 @@ class PluginChainCallback(ChainCallback):
     @override
     def on_error(self, title: str, error: Exception):
         pass
+
+    @property
+    def result(self) -> str:
+        return self._result
+
+    def _on_result(self, token):
+        self._result += token
+        self.callback(token)
