@@ -27,6 +27,7 @@ typing-extensions = "^4.8.0"
 aidial-sdk = "^0.1.0"
 aiohttp = "^3.8.5"
 openapi-schema-pydantic = "^1.2.4"
+openapi-pydantic = "^0.3.2"
 
 [tool.poetry.group.dev.dependencies]
 nox = "^2023.4.22"
