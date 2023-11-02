@@ -129,12 +129,14 @@ class AssistantApplication(ChatCompletion):
         except ReasonLengthException:
             finish_reason = FinishReason.LENGTH
         except OpenAIError as e:
-            logger.exception("Request processing has failed.")
-            raise HTTPException(
-                str(e),
-                status_code=e.http_status or 500,
-                code=e.code,
-            )
+            if e.error:
+                raise HTTPException(
+                    e.error.message,
+                    status_code=e.http_status or 500,
+                    code=e.error.code,
+                )
+
+            raise
 
         choice.set_state(callback.state)
         choice.close(finish_reason)
