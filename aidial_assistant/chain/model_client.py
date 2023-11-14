@@ -7,6 +7,10 @@ from aidial_sdk.chat_completion.request import Message
 from aiohttp import ClientSession
 
 
+class ReasonLengthException(Exception):
+    pass
+
+
 class UsagePublisher:
     def __init__(self):
         self.total_usage = defaultdict(int)
@@ -55,6 +59,10 @@ class ModelClient(ABC):
                 if usage:
                     usage_publisher.publish(usage)
 
-                text = chunk["choices"][0]["delta"].get("content")
+                choice = chunk["choices"][0]
+                text = choice["delta"].get("content")
                 if text:
                     yield text
+
+                if choice.get("finish_reason") == "length":
+                    raise ReasonLengthException()

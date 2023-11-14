@@ -1,10 +1,10 @@
 import json
+import logging
 from typing import Any, AsyncIterator, Callable, List
 
 from aidial_sdk.chat_completion.request import Message, Role
 from jinja2 import Template
 
-from aidial_assistant.chain import logger
 from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
 from aidial_assistant.chain.callbacks.command_callback import CommandCallback
 from aidial_assistant.chain.callbacks.result_callback import ResultCallback
@@ -19,14 +19,14 @@ from aidial_assistant.chain.model_response_reader import (
     CommandsReader,
 )
 from aidial_assistant.commands.base import Command, FinalCommand
-from aidial_assistant.json_stream.json_node import (
-    JsonNode,
-    JsonParsingException,
-)
+from aidial_assistant.json_stream.exceptions import JsonParsingException
+from aidial_assistant.json_stream.json_node import JsonNode
 from aidial_assistant.json_stream.json_object import JsonObject
 from aidial_assistant.json_stream.json_parser import JsonParser
 from aidial_assistant.json_stream.json_string import JsonString
 from aidial_assistant.json_stream.tokenator import AsyncPeekable, Tokenator
+
+logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_COUNT = 20
 MAX_RETRY_COUNT = 2
@@ -70,7 +70,7 @@ class CommandChain:
         history: List[Message],
         callback: ChainCallback,
         usage_publisher: UsagePublisher,
-    ) -> str:
+    ):
         for message in history[:-1]:
             self._log_message(message.role, message.content)
 
@@ -95,20 +95,17 @@ class CommandChain:
                         if isinstance(command, FinalCommand):
                             if len(responses) > 0:
                                 continue
-                            arg = await anext(args)
-                            result = await CommandChain._to_result(
-                                arg
-                                if isinstance(arg, JsonString)
-                                else arg.to_string_tokens(),
+                            message = await anext(args)
+                            await CommandChain._to_result(
+                                message
+                                if isinstance(message, JsonString)
+                                else message.to_string_tokens(),
                                 # Some relatively large number to avoid CxSAST warning about potential DoS attack.
                                 # Later, the upper limit will be provided by the DIAL Core (proxy).
                                 32000,
                                 callback.result_callback(),
                             )
-                            self._log_message(
-                                Role.ASSISTANT, json.dumps(root_node.value())
-                            )
-                            return result
+                            return
                         else:
                             response = await CommandChain._execute_command(
                                 command_name, command, args, callback
@@ -118,11 +115,7 @@ class CommandChain:
                             responses.append(response)
 
                     if len(responses) == 0:
-                        # Assume the model has nothing to say
-                        self._log_message(
-                            Role.ASSISTANT, json.dumps(root_node.value())
-                        )
-                        return ""
+                        return
 
                 normalized_model_response = json.dumps({"commands": commands})
                 history.append(
@@ -205,19 +198,16 @@ class CommandChain:
         arg: AsyncIterator[str],
         max_model_completion_tokens: int,
         callback: ResultCallback,
-    ) -> str:
-        result = ""
+    ):
         try:
             for _ in range(max_model_completion_tokens):
                 token = await anext(arg)
                 callback.on_result(token)
-                result += token
-            logger.warn(
+            logger.warning(
                 f"Max token count of {max_model_completion_tokens} exceeded in the reply"
             )
         except StopAsyncIteration:
             pass
-        return result
 
     @staticmethod
     async def _execute_command(

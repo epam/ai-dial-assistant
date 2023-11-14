@@ -5,11 +5,11 @@ from typing import Any, Tuple
 
 from typing_extensions import override
 
+from aidial_assistant.json_stream.exceptions import unexpected_symbol_error
 from aidial_assistant.json_stream.json_node import (
     ComplexNode,
     JsonNode,
     NodeResolver,
-    unexpected_symbol_error,
 )
 from aidial_assistant.json_stream.json_normalizer import JsonNormalizer
 from aidial_assistant.json_stream.json_string import JsonString
@@ -22,7 +22,7 @@ class JsonObject(
 ):
     def __init__(self, char_position: int):
         super().__init__(char_position)
-        self.listener = Queue[Tuple[str, JsonNode] | None | BaseException]()
+        self.listener = Queue[Tuple[str, JsonNode] | None]()
         self._object: dict[str, JsonNode] = {}
 
     @override
@@ -34,7 +34,7 @@ class JsonObject(
 
     @override
     async def __anext__(self) -> Tuple[str, JsonNode]:
-        result = ComplexNode.throw_if_exception(await self.listener.get())
+        result = await self.listener.get()
         if result is None:
             raise StopAsyncIteration
 
@@ -57,52 +57,43 @@ class JsonObject(
 
     @override
     async def parse(self, stream: Tokenator, dependency_resolver: NodeResolver):
-        try:
-            normalised_stream = JsonNormalizer(stream)
-            char = await anext(normalised_stream)
-            if not char == JsonObject.token():
-                raise unexpected_symbol_error(char, stream.char_position)
+        normalised_stream = JsonNormalizer(stream)
+        char = await anext(normalised_stream)
+        if not char == JsonObject.token():
+            raise unexpected_symbol_error(char, stream.char_position)
 
-            separate = False
-            while True:
-                char = await normalised_stream.apeek()
+        separate = False
+        while True:
+            char = await normalised_stream.apeek()
 
-                if char == "}":
-                    await normalised_stream.askip()
-                    break
+            if char == "}":
+                await normalised_stream.askip()
+                break
 
-                if char == ",":
-                    if not separate:
-                        raise unexpected_symbol_error(
-                            char, stream.char_position
-                        )
-
-                    await normalised_stream.askip()
-                    separate = False
-                elif char == '"':
-                    if separate:
-                        raise unexpected_symbol_error(
-                            char, stream.char_position
-                        )
-
-                    key = await join_string(JsonString.read(stream))
-                    colon = await anext(normalised_stream)
-                    if not colon == ":":
-                        raise unexpected_symbol_error(
-                            colon, stream.char_position
-                        )
-
-                    value = await dependency_resolver.resolve(stream)
-                    await self.listener.put((key, value))
-                    if isinstance(value, ComplexNode):
-                        await value.parse(stream, dependency_resolver)
-                    separate = True
-                else:
+            if char == ",":
+                if not separate:
                     raise unexpected_symbol_error(char, stream.char_position)
 
-            await self.listener.put(None)
-        except BaseException as e:
-            await self.listener.put(e)
+                await normalised_stream.askip()
+                separate = False
+            elif char == '"':
+                if separate:
+                    raise unexpected_symbol_error(char, stream.char_position)
+
+                key = await join_string(JsonString.read(stream))
+                colon = await anext(normalised_stream)
+                if not colon == ":":
+                    raise unexpected_symbol_error(colon, stream.char_position)
+
+                value = await dependency_resolver.resolve(stream)
+                await self.listener.put((key, value))
+                if isinstance(value, ComplexNode):
+                    await value.parse(stream, dependency_resolver)
+                separate = True
+            else:
+                raise unexpected_symbol_error(char, stream.char_position)
+
+        await self.listener.put(None)
 
     @override
     async def to_string_tokens(self) -> AsyncIterator[str]:

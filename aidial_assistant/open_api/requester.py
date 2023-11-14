@@ -1,12 +1,15 @@
 import json
+import logging
 from typing import Dict, List, NamedTuple, Optional
 
+import aiohttp.client_exceptions
 from aiohttp import hdrs
 from langchain.tools.openapi.utils.api_models import APIOperation
 
 from aidial_assistant.commands.base import JsonResult, ResultObject, TextResult
-from aidial_assistant.open_api import logger
 from aidial_assistant.utils.requests import arequest
+
+logger = logging.getLogger(__name__)
 
 
 class _ParamMapping(NamedTuple):
@@ -87,15 +90,18 @@ class OpenAPIEndpointRequester:
             self.operation.method.value, headers=headers, **request_args  # type: ignore
         ) as response:
             if response.status != 200:
-                method_str = str(self.operation.method.value)  # type: ignore
-                error_object = {
-                    "reason": response.reason,
-                    "status_code": response.status,
-                    "method:": method_str.upper(),
-                    "url": request_args["url"],
-                    "params": request_args["params"],
-                }
-                return JsonResult(json.dumps(error_object))
+                try:
+                    return JsonResult(json.dumps(await response.json()))
+                except aiohttp.ContentTypeError:
+                    method_str = str(self.operation.method.value)  # type: ignore
+                    error_object = {
+                        "reason": response.reason,
+                        "status_code": response.status,
+                        "method:": method_str.upper(),
+                        "url": request_args["url"],
+                        "params": request_args["params"],
+                    }
+                    return JsonResult(json.dumps(error_object))
 
             if "text" in response.headers[hdrs.CONTENT_TYPE]:
                 return TextResult(await response.text())

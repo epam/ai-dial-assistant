@@ -3,6 +3,7 @@ from typing import Any, AsyncIterator
 
 from typing_extensions import override
 
+from aidial_assistant.json_stream.exceptions import unexpected_symbol_error
 from aidial_assistant.json_stream.json_array import JsonArray
 from aidial_assistant.json_stream.json_bool import JsonBoolean
 from aidial_assistant.json_stream.json_node import (
@@ -10,7 +11,6 @@ from aidial_assistant.json_stream.json_node import (
     JsonNode,
     NodeResolver,
     PrimitiveNode,
-    unexpected_symbol_error,
 )
 from aidial_assistant.json_stream.json_normalizer import JsonNormalizer
 from aidial_assistant.json_stream.json_null import JsonNull
@@ -52,7 +52,7 @@ class RootNodeResolver(NodeResolver):
 class JsonRoot(ComplexNode[Any]):
     def __init__(self):
         super().__init__(0)
-        self._node: JsonNode | BaseException | None = None
+        self._node: JsonNode | None = None
         self._event = asyncio.Event()
 
     async def node(self) -> JsonNode:
@@ -61,7 +61,7 @@ class JsonRoot(ComplexNode[Any]):
             # Should never happen
             raise Exception("Node was not parsed")
 
-        return ComplexNode.throw_if_exception(self._node)
+        return self._node
 
     @override
     def type(self) -> str:
@@ -71,8 +71,6 @@ class JsonRoot(ComplexNode[Any]):
     async def parse(self, stream: Tokenator, dependency_resolver: NodeResolver):
         try:
             self._node = await dependency_resolver.resolve(stream)
-        except BaseException as e:
-            self._node = e
         finally:
             self._event.set()
 
@@ -84,7 +82,4 @@ class JsonRoot(ComplexNode[Any]):
 
     @override
     def value(self) -> Any:
-        if isinstance(self._node, JsonNode):
-            return self._node.value()
-
-        return None
+        return self._node.value() if self._node else None

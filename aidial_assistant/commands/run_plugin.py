@@ -13,12 +13,16 @@ from aidial_assistant.chain.command_chain import (
     CommandChain,
     CommandConstructor,
 )
-from aidial_assistant.chain.model_client import ModelClient, UsagePublisher
+from aidial_assistant.chain.model_client import (
+    ModelClient,
+    ReasonLengthException,
+    UsagePublisher,
+)
 from aidial_assistant.commands.base import (
     Command,
     ExecutionCallback,
-    JsonResult,
     ResultObject,
+    TextResult,
 )
 from aidial_assistant.commands.open_api import OpenAPIChatCommand
 from aidial_assistant.commands.plugin_callback import PluginChainCallback
@@ -111,10 +115,9 @@ class RunPlugin(Command):
             command_dict=command_dict,
         )
 
-        return JsonResult(
-            await chat.run_chat(
-                init_messages,
-                PluginChainCallback(execution_callback),
-                usage_publisher,
-            )
-        )
+        callback = PluginChainCallback(execution_callback)
+        try:
+            await chat.run_chat(init_messages, callback, usage_publisher)
+            return TextResult(callback.result)
+        except ReasonLengthException:
+            return TextResult(callback.result)
