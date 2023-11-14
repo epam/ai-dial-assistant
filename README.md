@@ -81,12 +81,12 @@ make serve
 
 Copy .env.example to .env and customize it for your environment:
 
-| Variable         | Default                  | Description                                            |
-|------------------|--------------------------|--------------------------------------------------------|
-| CONFIG_DIR       | aidial_assistant/configs | Configuration directory                                |
-| LOG_LEVEL        | INFO                     | Log level. Use DEBUG for dev purposes and INFO in prod |
-| OPENAPI_API_BASE | N/A                      | OpenAI API Base                                        |
-| WEB_CONCURRENCY  | 1                        | Number of workers for the server                       |
+| Variable        | Default                  | Description                                            |
+|-----------------|--------------------------|--------------------------------------------------------|
+| CONFIG_DIR      | aidial_assistant/configs | Configuration directory                                |
+| LOG_LEVEL       | INFO                     | Log level. Use DEBUG for dev purposes and INFO in prod |
+| OPENAI_API_BASE | N/A                      | OpenAI API Base                                        |
+| WEB_CONCURRENCY | 1                        | Number of workers for the server                       |
 
 ### Docker
 
