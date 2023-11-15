@@ -1,7 +1,9 @@
 from collections.abc import AsyncIterator
 
+from aidial_assistant.json_stream.characterstream import AsyncPeekable
 from aidial_assistant.json_stream.json_array import JsonArray
 from aidial_assistant.json_stream.json_node import JsonNode
+from aidial_assistant.json_stream.json_object import JsonObject
 from aidial_assistant.json_stream.json_parser import (
     array_node,
     object_node,
@@ -12,6 +14,19 @@ from aidial_assistant.utils.text import join_string
 
 class AssistantProtocolException(Exception):
     pass
+
+
+async def skip_to_json_start(stream: AsyncPeekable[str]):
+    # Some models tend to provide explanations for their replies regardless of what the prompt says.
+    try:
+        while True:
+            char = await stream.apeek()
+            if char == JsonObject.token():
+                break
+
+            await anext(stream)
+    except StopAsyncIteration:
+        raise AssistantProtocolException("Reply must be in JSON format.")
 
 
 class CommandReader:

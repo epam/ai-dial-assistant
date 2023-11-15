@@ -1,10 +1,13 @@
 from typing_extensions import override
 
-from aidial_assistant.json_stream.tokenator import AsyncPeekable, Tokenator
+from aidial_assistant.json_stream.characterstream import (
+    AsyncPeekable,
+    CharacterStream,
+)
 
 
 class JsonNormalizer(AsyncPeekable[str]):
-    def __init__(self, stream: Tokenator):
+    def __init__(self, stream: CharacterStream):
         self.stream = stream
 
     @override
@@ -19,9 +22,9 @@ class JsonNormalizer(AsyncPeekable[str]):
     @override
     async def apeek(self) -> str:
         while True:
-            token = await self.stream.apeek()
-            if str.isspace(token):
+            char = await self.stream.apeek()
+            if str.isspace(char):
                 await anext(self.stream)
                 continue
             else:
-                return token
+                return char

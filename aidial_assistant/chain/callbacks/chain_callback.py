@@ -20,5 +20,5 @@ class ChainCallback(ABC):
         """Returns a callback for reporting a result"""
 
     @abstractmethod
-    def on_error(self, title: str, error: Exception):
+    def on_error(self, title: str, error: str):
         """Called when an error occurs"""

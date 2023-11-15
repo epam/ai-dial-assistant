@@ -15,7 +15,20 @@ class DateAwareTemplate(Template):
         return super().render(*args, **kwargs, today_date=today)
 
 
-request_response = """
+class PartialTemplate:
+    def __init__(self, template: str, **kwargs):
+        self.template = template
+        self.template_class_args = kwargs
+
+    def build(self, **kwargs) -> Template:
+        template_args = self.template_class_args.get("globals", {}) | kwargs
+        return JINJA2_ENV.from_string(
+            self.template,
+            **(self.template_class_args | {"globals": template_args}),
+        )
+
+
+_REQUEST_EXAMPLE_TEXT = """
 ALWAYS reply with a JSON containing an array of available commands. You must not use natural language:
 {
   "commands": [
@@ -32,7 +45,7 @@ Example:
 {"commands": [{"command": "reply", "args": ["Hello, world!"]}]}
 """.strip()
 
-system_template = """
+_SYSTEM_TEXT = """
 Today's date is {{today_date}}.
 
 {%- if system_prefix %}
@@ -61,7 +74,7 @@ Arguments:
 {{request_response}}
 """.strip()
 
-plugin_system_template = """
+_PLUGIN_SYSTEM_TEXT = """
 Today's date is {{today_date}}.
 
 Service
@@ -88,36 +101,82 @@ Arguments:
 {{request_response}}
 """.strip()
 
-resp_template = """
+_ENFORCE_JSON_FORMAT_TEXT = """
 {{response}}
 **Remember to reply with a JSON with commands**
 """.strip()
 
-open_api_plugin_template = """
-Service
-API_DESCRIPTION:
-{{api_description}}
+_MAIN_BEST_EFFORT_TEXT = (
+    """
+You were allowed to use the following addons to answer the query below.
 
-API_SCHEMA:
+=== ADDONS ===
+{% for name, description in tools.items() %}
+* {{name}} - {{description | decap}}
+{%- endfor %}
+
+=== QUERY ===
+
+{{message}}
+
+{%- if dialogue %}
+
+=== ADDONS REQUESTS AND RESPONSES ===
+{% for message in dialogue %}
+{{message["role"]}}: {{message["content"]}}
+{%- endfor %}
+{%- endif %}
+
+However, the follow-up requests failed with the following error:
+> {{error}}
+
+Please respond to the query using the available information, and explaining that the use of the addons was not possible due to the error.
+"""
+).strip()
+
+_PLUGIN_BEST_EFFORT_TEXT = (
+    """
+You were allowed to use the following API to answer the query below.
+
+=== API ===
+
 ```typescript
-{{api_schema}}}
+{{api_schema}}
 ```
-""".strip()
 
-MAIN_SYSTEM_DIALOG_MESSAGE = JINJA2_ENV.from_string(
-    system_template,
-    globals={
-        "request_response": request_response,
-    },
+=== QUERY ===
+
+{{message}}
+
+{%- if dialogue %}
+
+=== API REQUESTS AND RESPONSES ===
+{% for message in dialogue %}
+{{message["role"]}}: {{message["content"]}}
+{%- endfor %}
+{%- endif %}
+
+However, the follow-up requests failed with the following error:
+> {{error}}
+
+Please respond to the query using the available information, and explaining that the use of the API was not possible due to the error.
+"""
+).strip()
+
+MAIN_SYSTEM_DIALOG_MESSAGE = PartialTemplate(
+    _SYSTEM_TEXT,
+    globals={"request_response": _REQUEST_EXAMPLE_TEXT},
     template_class=DateAwareTemplate,
 )
 
-PLUGIN_SYSTEM_DIALOG_MESSAGE = JINJA2_ENV.from_string(
-    plugin_system_template,
-    globals={
-        "request_response": request_response,
-    },
+PLUGIN_SYSTEM_DIALOG_MESSAGE = PartialTemplate(
+    _PLUGIN_SYSTEM_TEXT,
+    globals={"request_response": _REQUEST_EXAMPLE_TEXT},
     template_class=DateAwareTemplate,
 )
 
-RESP_DIALOG_PROMPT = JINJA2_ENV.from_string(resp_template)
+ENFORCE_JSON_FORMAT_TEMPLATE = JINJA2_ENV.from_string(_ENFORCE_JSON_FORMAT_TEXT)
+
+MAIN_BEST_EFFORT_TEMPLATE = PartialTemplate(_MAIN_BEST_EFFORT_TEXT)
+
+PLUGIN_BEST_EFFORT_TEMPLATE = PartialTemplate(_PLUGIN_BEST_EFFORT_TEXT)

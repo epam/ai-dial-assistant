@@ -6,7 +6,7 @@ from aiocache import cached
 from aiohttp import hdrs
 from fastapi import HTTPException
 from langchain.tools import OpenAPISpec
-from pydantic import BaseModel, parse_obj_as
+from pydantic import BaseModel, Field, parse_obj_as
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from aidial_assistant.utils.requests import aget
@@ -16,14 +16,14 @@ logger = logging.getLogger(__name__)
 
 class AuthConf(BaseModel):
     type: str
-    authorization_type: str = "bearer"
+    authorization_type: str = Field(default="bearer")
 
 
 class ApiConf(BaseModel):
     type: str
     url: str
-    has_user_authentication: bool = False
-    is_user_authenticated: bool = False
+    has_user_authentication: bool = Field(default=False)
+    is_user_authenticated: bool = Field(default=False)
 
 
 class AIPluginConf(BaseModel):

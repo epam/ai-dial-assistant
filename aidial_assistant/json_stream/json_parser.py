@@ -2,13 +2,13 @@ from asyncio import TaskGroup
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 
+from aidial_assistant.json_stream.characterstream import CharacterStream
 from aidial_assistant.json_stream.exceptions import JsonParsingException
 from aidial_assistant.json_stream.json_array import JsonArray
 from aidial_assistant.json_stream.json_node import ComplexNode, JsonNode
 from aidial_assistant.json_stream.json_object import JsonObject
 from aidial_assistant.json_stream.json_root import JsonRoot, RootNodeResolver
 from aidial_assistant.json_stream.json_string import JsonString
-from aidial_assistant.json_stream.tokenator import Tokenator
 
 
 def array_node(node: JsonNode) -> JsonArray:
@@ -41,7 +41,7 @@ def string_node(node: JsonNode) -> JsonString:
 class JsonParser:
     @staticmethod
     @asynccontextmanager
-    async def parse(stream: Tokenator) -> AsyncGenerator[JsonNode, Any]:
+    async def parse(stream: CharacterStream) -> AsyncGenerator[JsonNode, Any]:
         root = JsonRoot()
         try:
             async with TaskGroup() as tg:
@@ -54,7 +54,7 @@ class JsonParser:
             raise e.exceptions[0]
 
     @staticmethod
-    async def _parse_root(root: JsonRoot, stream: Tokenator):
+    async def _parse_root(root: JsonRoot, stream: CharacterStream):
         try:
             node_resolver = RootNodeResolver()
             await root.parse(stream, node_resolver)

@@ -3,12 +3,33 @@ from collections import defaultdict
 from typing import Any, AsyncIterator, List
 
 import openai
-from aidial_sdk.chat_completion.request import Message
+from aidial_sdk.chat_completion import Role
 from aiohttp import ClientSession
+from pydantic import BaseModel
 
 
 class ReasonLengthException(Exception):
     pass
+
+
+class Message(BaseModel):
+    role: Role
+    content: str
+
+    def to_openai_message(self) -> dict[str, str]:
+        return {"role": self.role.value, "content": self.content}
+
+    @classmethod
+    def system(cls, content):
+        return cls(role=Role.SYSTEM, content=content)
+
+    @classmethod
+    def user(cls, content):
+        return cls(role=Role.USER, content=content)
+
+    @classmethod
+    def assistant(cls, content):
+        return cls(role=Role.ASSISTANT, content=content)
 
 
 class UsagePublisher:
@@ -45,13 +66,7 @@ class ModelClient(ABC):
 
             model_result = await openai.ChatCompletion.acreate(
                 **self.model_args,
-                messages=[
-                    {
-                        "role": m.role.value,
-                        "content": m.content,
-                    }
-                    for m in messages
-                ]
+                messages=[message.to_openai_message() for message in messages]
             )
 
             async for chunk in model_result:  # type: ignore

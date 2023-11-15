@@ -55,8 +55,8 @@ class PluginResultCallback(ResultCallback):
         self.callback = callback
 
     @override
-    def on_result(self, token):
-        self.callback(token)
+    def on_result(self, chunk: str):
+        self.callback(chunk)
 
 
 class PluginChainCallback(ChainCallback):
@@ -78,13 +78,13 @@ class PluginChainCallback(ChainCallback):
         pass
 
     @override
-    def on_error(self, title: str, error: Exception):
+    def on_error(self, title: str, error: str):
         pass
 
     @property
     def result(self) -> str:
         return self._result
 
-    def _on_result(self, token):
-        self._result += token
-        self.callback(token)
+    def _on_result(self, chunk):
+        self._result += chunk
+        self.callback(chunk)
