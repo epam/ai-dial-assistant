@@ -6,7 +6,7 @@ from aiocache import cached
 from aiohttp import hdrs
 from fastapi import HTTPException
 from langchain.tools import OpenAPISpec
-from pydantic import BaseModel, Field, parse_obj_as
+from pydantic import BaseModel, parse_obj_as
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from aidial_assistant.utils.requests import aget
