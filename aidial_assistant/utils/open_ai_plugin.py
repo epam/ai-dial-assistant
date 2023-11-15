@@ -16,14 +16,14 @@ logger = logging.getLogger(__name__)
 
 class AuthConf(BaseModel):
     type: str
-    authorization_type: str = Field(default="bearer")
+    authorization_type: str = "bearer"
 
 
 class ApiConf(BaseModel):
     type: str
     url: str
-    has_user_authentication: bool = Field(default=False)
-    is_user_authenticated: bool = Field(default=False)
+    has_user_authentication: bool = False
+    is_user_authenticated: bool = False
 
 
 class AIPluginConf(BaseModel):

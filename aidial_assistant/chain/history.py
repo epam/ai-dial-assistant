@@ -3,7 +3,7 @@ from enum import Enum
 
 from aidial_sdk.chat_completion import Role
 from jinja2 import Template
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from aidial_assistant.chain.dialogue import Dialogue
 from aidial_assistant.chain.model_client import Message
@@ -16,7 +16,7 @@ class MessageScope(str, Enum):
 
 
 class ScopedMessage(BaseModel):
-    scope: MessageScope = Field(default=MessageScope.USER)
+    scope: MessageScope = MessageScope.USER
     message: Message
 
 
