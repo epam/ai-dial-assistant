@@ -13,9 +13,9 @@ class ArgCallback:
         if self.arg_index > 0:
             self.callback(", ")
 
-    def on_arg(self, token: str):
-        """Called when an argument token is read"""
-        self.callback(token)
+    def on_arg(self, chunk: str):
+        """Called when an argument chunk is read"""
+        self.callback(chunk)
 
     def on_arg_end(self):
         """Called when the arg ends"""

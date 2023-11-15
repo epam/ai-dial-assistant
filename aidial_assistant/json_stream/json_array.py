@@ -4,6 +4,7 @@ from typing import Any
 
 from typing_extensions import override
 
+from aidial_assistant.json_stream.characterstream import CharacterStream
 from aidial_assistant.json_stream.exceptions import unexpected_symbol_error
 from aidial_assistant.json_stream.json_node import (
     ComplexNode,
@@ -11,7 +12,6 @@ from aidial_assistant.json_stream.json_node import (
     NodeResolver,
 )
 from aidial_assistant.json_stream.json_normalizer import JsonNormalizer
-from aidial_assistant.json_stream.tokenator import Tokenator
 
 
 class JsonArray(ComplexNode[list[Any]], AsyncIterator[JsonNode]):
@@ -42,7 +42,9 @@ class JsonArray(ComplexNode[list[Any]], AsyncIterator[JsonNode]):
         return result
 
     @override
-    async def parse(self, stream: Tokenator, dependency_resolver: NodeResolver):
+    async def parse(
+        self, stream: CharacterStream, dependency_resolver: NodeResolver
+    ):
         normalised_stream = JsonNormalizer(stream)
         char = await anext(normalised_stream)
         self._char_position = stream.char_position
@@ -72,14 +74,14 @@ class JsonArray(ComplexNode[list[Any]], AsyncIterator[JsonNode]):
         await self.listener.put(None)
 
     @override
-    async def to_string_tokens(self) -> AsyncIterator[str]:
+    async def to_string_chunks(self) -> AsyncIterator[str]:
         yield JsonArray.token()
         separate = False
         async for value in self:
             if separate:
                 yield ", "
-            async for token in value.to_string_tokens():
-                yield token
+            async for chunk in value.to_string_chunks():
+                yield chunk
             separate = True
         yield "]"
 

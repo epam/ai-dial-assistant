@@ -5,6 +5,7 @@ from typing import Any, Tuple
 
 from typing_extensions import override
 
+from aidial_assistant.json_stream.characterstream import CharacterStream
 from aidial_assistant.json_stream.exceptions import unexpected_symbol_error
 from aidial_assistant.json_stream.json_node import (
     ComplexNode,
@@ -13,7 +14,6 @@ from aidial_assistant.json_stream.json_node import (
 )
 from aidial_assistant.json_stream.json_normalizer import JsonNormalizer
 from aidial_assistant.json_stream.json_string import JsonString
-from aidial_assistant.json_stream.tokenator import Tokenator
 from aidial_assistant.utils.text import join_string
 
 
@@ -56,7 +56,9 @@ class JsonObject(
         raise KeyError(key)
 
     @override
-    async def parse(self, stream: Tokenator, dependency_resolver: NodeResolver):
+    async def parse(
+        self, stream: CharacterStream, dependency_resolver: NodeResolver
+    ):
         normalised_stream = JsonNormalizer(stream)
         char = await anext(normalised_stream)
         if not char == JsonObject.token():
@@ -96,7 +98,7 @@ class JsonObject(
         await self.listener.put(None)
 
     @override
-    async def to_string_tokens(self) -> AsyncIterator[str]:
+    async def to_string_chunks(self) -> AsyncIterator[str]:
         yield JsonObject.token()
         separate = False
         async for key, value in self:
@@ -104,8 +106,8 @@ class JsonObject(
                 yield ", "
             yield json.dumps(key)
             yield ": "
-            async for token in value.to_string_tokens():
-                yield token
+            async for chunk in value.to_string_chunks():
+                yield chunk
             separate = True
         yield "}"
 

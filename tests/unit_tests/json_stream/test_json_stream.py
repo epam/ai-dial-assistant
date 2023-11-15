@@ -4,8 +4,8 @@ from collections.abc import AsyncIterator
 
 import pytest
 
+from aidial_assistant.json_stream.characterstream import CharacterStream
 from aidial_assistant.json_stream.json_parser import JsonParser
-from aidial_assistant.json_stream.tokenator import Tokenator
 from aidial_assistant.utils.text import join_string
 
 JSON_STRINGS = [
@@ -133,7 +133,7 @@ JSON_STRINGS = [
 ]
 
 
-async def _tokenize(json_string: str) -> AsyncIterator[str]:
+async def _split_into_chunks(json_string: str) -> AsyncIterator[str]:
     while json_string:
         chunk_size = random.randint(
             1, 5
@@ -148,8 +148,10 @@ async def _tokenize(json_string: str) -> AsyncIterator[str]:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("json_string", JSON_STRINGS)
 async def test_json_parsing(json_string: str):
-    async with JsonParser.parse(Tokenator(_tokenize(json_string))) as node:
-        actual = await join_string(node.to_string_tokens())
+    async with JsonParser.parse(
+        CharacterStream(_split_into_chunks(json_string))
+    ) as node:
+        actual = await join_string(node.to_string_chunks())
         expected = json.dumps(json.loads(json_string))
 
         assert actual == expected

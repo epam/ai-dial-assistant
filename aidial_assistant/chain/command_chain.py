@@ -1,10 +1,11 @@
 import json
 import logging
-from typing import Any, AsyncIterator, Callable, List
+from typing import Any, AsyncIterator, Callable, Tuple
 
-from aidial_sdk.chat_completion.request import Message, Role
-from jinja2 import Template
+from aidial_sdk.chat_completion.request import Role
+from openai import InvalidRequestError
 
+from aidial_assistant.application.prompts import ENFORCE_JSON_FORMAT_TEMPLATE
 from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
 from aidial_assistant.chain.callbacks.command_callback import CommandCallback
 from aidial_assistant.chain.callbacks.result_callback import ResultCallback
@@ -13,40 +14,40 @@ from aidial_assistant.chain.command_result import (
     Status,
     responses_to_text,
 )
-from aidial_assistant.chain.model_client import ModelClient, UsagePublisher
+from aidial_assistant.chain.dialogue import Dialogue
+from aidial_assistant.chain.history import History
+from aidial_assistant.chain.model_client import (
+    Message,
+    ModelClient,
+    UsagePublisher,
+)
 from aidial_assistant.chain.model_response_reader import (
     AssistantProtocolException,
     CommandsReader,
+    skip_to_json_start,
 )
 from aidial_assistant.commands.base import Command, FinalCommand
+from aidial_assistant.json_stream.characterstream import CharacterStream
 from aidial_assistant.json_stream.exceptions import JsonParsingException
 from aidial_assistant.json_stream.json_node import JsonNode
-from aidial_assistant.json_stream.json_object import JsonObject
 from aidial_assistant.json_stream.json_parser import JsonParser
 from aidial_assistant.json_stream.json_string import JsonString
-from aidial_assistant.json_stream.tokenator import AsyncPeekable, Tokenator
+from aidial_assistant.utils.stream import CumulativeStream
 
 logger = logging.getLogger(__name__)
 
-MAX_MESSAGE_COUNT = 20
-MAX_RETRY_COUNT = 2
+DEFAULT_MAX_RETRY_COUNT = 3
+
+# Some relatively large number to avoid CxSAST warning about potential DoS attack.
+# Later, the upper limit will be provided by the DIAL Core (proxy).
+MAX_MODEL_COMPLETION_CHUNKS = 32000
 
 CommandConstructor = Callable[[], Command]
 CommandDict = dict[str, CommandConstructor]
 
 
-class BufferedStream(AsyncIterator[str]):
-    def __init__(self, stream: AsyncIterator[str]):
-        self.stream = stream
-        self.buffer = ""
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self) -> str:
-        chunk = await anext(self.stream)
-        self.buffer += chunk
-        return chunk
+class MaxRetryCountExceededException(Exception):
+    pass
 
 
 class CommandChain:
@@ -55,118 +56,144 @@ class CommandChain:
         name: str,
         model_client: ModelClient,
         command_dict: CommandDict,
-        resp_prompt: Template,
+        usage_publisher: UsagePublisher,
+        max_retry_count: int = DEFAULT_MAX_RETRY_COUNT,
     ):
         self.name = name
         self.model_client = model_client
         self.command_dict = command_dict
-        self.resp_prompt = resp_prompt
+        self.usage_publisher = usage_publisher
+        self.max_retry_count = max_retry_count
 
-    def _log_message(self, role: Role, content: str | None):
-        logger.debug(f"[{self.name}] {role.value}: {content or ''}")
+    def _log_message(self, role: Role, content: str):
+        logger.debug(f"[{self.name}] {role.value}: {content}")
 
-    async def run_chat(
-        self,
-        history: List[Message],
-        callback: ChainCallback,
-        usage_publisher: UsagePublisher,
-    ):
-        for message in history[:-1]:
-            self._log_message(message.role, message.content)
+    def _log_messages(self, messages: list[Message]):
+        if logger.isEnabledFor(logging.DEBUG):
+            for message in messages:
+                self._log_message(message.role, message.content)
 
-        retry_count = 0
-        for _ in range(MAX_MESSAGE_COUNT):
-            token_stream = BufferedStream(
-                self.model_client.agenerate(
-                    self._reinforce_last_message(history), usage_publisher
+    async def run_chat(self, history: History, callback: ChainCallback):
+        dialogue = Dialogue()
+        try:
+            messages = history.to_protocol_messages()
+            while True:
+                pair = await self._run_with_protocol_failure_retries(
+                    callback,
+                    self._reinforce_json_format(messages + dialogue.messages),
                 )
+
+                if pair is None:
+                    break
+
+                dialogue.append(pair[0], pair[1])
+        except (JsonParsingException, AssistantProtocolException):
+            messages = (
+                history.to_best_effort_messages(
+                    "The next constructed API request is incorrect.",
+                    dialogue,
+                )
+                if not dialogue.is_empty()
+                else history.to_client_messages()
             )
-            tokenator = Tokenator(token_stream)
-            await CommandChain._skip_text(tokenator)
-            try:
-                commands: list[dict[str, Any]] = []
-                responses: list[CommandResult] = []
-                async with JsonParser.parse(tokenator) as root_node:
-                    request_reader = CommandsReader(root_node)
-                    async for invocation in request_reader.parse_invocations():
-                        command_name = await invocation.parse_name()
-                        command = self._create_command(command_name)
-                        args = invocation.parse_args()
-                        if isinstance(command, FinalCommand):
-                            if len(responses) > 0:
-                                continue
-                            message = await anext(args)
-                            await CommandChain._to_result(
-                                message
-                                if isinstance(message, JsonString)
-                                else message.to_string_tokens(),
-                                # Some relatively large number to avoid CxSAST warning about potential DoS attack.
-                                # Later, the upper limit will be provided by the DIAL Core (proxy).
-                                32000,
-                                callback.result_callback(),
-                            )
-                            return
-                        else:
-                            response = await CommandChain._execute_command(
-                                command_name, command, args, callback
-                            )
+            await self._generate_result(messages, callback)
+        except InvalidRequestError as e:
+            if dialogue.is_empty() or e.code == "429":
+                raise
 
-                            commands.append(invocation.node.value())
-                            responses.append(response)
+            # Assuming the context length is exceeded
+            dialogue.pop()
+            await self._generate_result(
+                history.to_best_effort_messages(str(e), dialogue), callback
+            )
 
-                    if len(responses) == 0:
-                        return
-
-                normalized_model_response = json.dumps({"commands": commands})
-                history.append(
-                    Message(
-                        role=Role.ASSISTANT, content=normalized_model_response
+    async def _run_with_protocol_failure_retries(
+        self, callback: ChainCallback, messages: list[Message]
+    ) -> Tuple[str, str] | None:
+        self._log_messages(messages)
+        last_error: Exception | None = None
+        try:
+            retry: int = 0
+            retries = Dialogue()
+            while True:
+                chunk_stream = CumulativeStream(
+                    self.model_client.agenerate(
+                        messages + retries.messages, self.usage_publisher
                     )
                 )
-
-                response_text = responses_to_text(responses)
-                history.append(Message(role=Role.USER, content=response_text))
-
-                callback.on_state(normalized_model_response, response_text)
-                retry_count = 0
-            except (JsonParsingException, AssistantProtocolException) as e:
-                logger.exception("Failed to process model response")
-                callback.on_error(
-                    "Error"
-                    if retry_count == 0
-                    else f"Error (retry {retry_count})",
-                    e,
-                )
-
-                retry_count += 1
-                if retry_count > MAX_RETRY_COUNT:
-                    raise e
-
-                if token_stream.buffer:
-                    history.append(
-                        Message(
-                            role=Role.ASSISTANT, content=token_stream.buffer
-                        )
+                try:
+                    commands, responses = await self._run_commands(
+                        chunk_stream, callback
                     )
-                    history.append(
-                        Message(
-                            role=Role.USER,
-                            content=json.dumps({"error": str(e)}),
-                        )
+
+                    if responses:
+                        request_text = json.dumps({"commands": commands})
+                        response_text = responses_to_text(responses)
+
+                        callback.on_state(request_text, response_text)
+                        return request_text, response_text
+
+                    return None
+                except (JsonParsingException, AssistantProtocolException) as e:
+                    logger.exception("Failed to process model response")
+
+                    callback.on_error(
+                        "Error" if retry == 0 else f"Error (retry {retry})",
+                        "The model failed to construct addon request.",
                     )
-            finally:
-                self._log_message(Role.ASSISTANT, token_stream.buffer)
 
-        raise Exception(f"Max message count of {MAX_MESSAGE_COUNT} exceeded")
+                    if retry >= self.max_retry_count:
+                        raise
 
-    def _reinforce_last_message(self, history: list[Message]) -> list[Message]:
-        reinforced_message = self.resp_prompt.render(
-            response=history[-1].content
-        )
-        self._log_message(Role.USER, reinforced_message)
-        return history[:-1] + [
-            Message(role=Role.USER, content=reinforced_message),
-        ]
+                    retry += 1
+                    last_error = e
+                    retries.append(
+                        chunk_stream.buffer, json.dumps({"error": str(e)})
+                    )
+                finally:
+                    self._log_message(Role.ASSISTANT, chunk_stream.buffer)
+        except InvalidRequestError as e:
+            if last_error:
+                raise last_error
+
+            callback.on_error("Error", str(e))
+
+            raise
+
+    async def _run_commands(
+        self, chunk_stream: AsyncIterator[str], callback: ChainCallback
+    ) -> Tuple[list[dict[str, Any]], list[CommandResult]]:
+        char_stream = CharacterStream(chunk_stream)
+        await skip_to_json_start(char_stream)
+
+        async with JsonParser.parse(char_stream) as root_node:
+            commands: list[dict[str, Any]] = []
+            responses: list[CommandResult] = []
+            request_reader = CommandsReader(root_node)
+            async for invocation in request_reader.parse_invocations():
+                command_name = await invocation.parse_name()
+                command = self._create_command(command_name)
+                args = invocation.parse_args()
+                if isinstance(command, FinalCommand):
+                    if len(responses) > 0:
+                        continue
+                    message = await anext(args)
+                    await CommandChain._to_result(
+                        message
+                        if isinstance(message, JsonString)
+                        else message.to_string_chunks(),
+                        callback.result_callback(),
+                    )
+                    break
+                else:
+                    response = await CommandChain._execute_command(
+                        command_name, command, args, callback
+                    )
+
+                    commands.append(invocation.node.value())
+                    responses.append(response)
+
+            return commands, responses
 
     def _create_command(self, name: str) -> Command:
         if name not in self.command_dict:
@@ -175,6 +202,25 @@ class CommandChain:
             )
 
         return self.command_dict[name]()
+
+    async def _generate_result(
+        self, messages: list[Message], callback: ChainCallback
+    ):
+        stream = self.model_client.agenerate(messages, self.usage_publisher)
+
+        await CommandChain._to_result(stream, callback.result_callback())
+
+    @staticmethod
+    def _reinforce_json_format(messages: list[Message]) -> list[Message]:
+        last_message = messages[-1]
+        return messages[:-1] + [
+            Message(
+                role=last_message.role,
+                content=ENFORCE_JSON_FORMAT_TEMPLATE.render(
+                    response=last_message.content
+                ),
+            ),
+        ]
 
     @staticmethod
     async def _to_args(
@@ -186,25 +232,21 @@ class CommandChain:
             arg_callback = args_callback.arg_callback()
             arg_callback.on_arg_start()
             result = ""
-            async for token in arg.to_string_tokens():
-                arg_callback.on_arg(token)
-                result += token
+            async for chunk in arg.to_string_chunks():
+                arg_callback.on_arg(chunk)
+                result += chunk
             arg_callback.on_arg_end()
             yield json.loads(result)
         args_callback.on_args_end()
 
     @staticmethod
-    async def _to_result(
-        arg: AsyncIterator[str],
-        max_model_completion_tokens: int,
-        callback: ResultCallback,
-    ):
+    async def _to_result(stream: AsyncIterator[str], callback: ResultCallback):
         try:
-            for _ in range(max_model_completion_tokens):
-                token = await anext(arg)
-                callback.on_result(token)
+            for _ in range(MAX_MODEL_COMPLETION_CHUNKS):
+                chunk = await anext(stream)
+                callback.on_result(chunk)
             logger.warning(
-                f"Max token count of {max_model_completion_tokens} exceeded in the reply"
+                f"Max chunk count of {MAX_MODEL_COMPLETION_CHUNKS} exceeded in the reply"
             )
         except StopAsyncIteration:
             pass
@@ -234,15 +276,3 @@ class CommandChain:
         except Exception as e:
             logger.exception(f"Failed to execute command {name}")
             return {"status": Status.ERROR, "response": str(e)}
-
-    @staticmethod
-    async def _skip_text(stream: AsyncPeekable[str]):
-        try:
-            while True:
-                char = await stream.apeek()
-                if char == JsonObject.token():
-                    break
-
-                await anext(stream)
-        except StopAsyncIteration:
-            pass

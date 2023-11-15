@@ -1,6 +1,7 @@
 from types import TracebackType
 from typing import Callable
 
+from aidial_sdk.chat_completion import Status
 from aidial_sdk.chat_completion.choice import Choice
 from aidial_sdk.chat_completion.stage import Stage
 from typing_extensions import override
@@ -12,7 +13,7 @@ from aidial_assistant.chain.callbacks.command_callback import CommandCallback
 from aidial_assistant.chain.callbacks.result_callback import ResultCallback
 from aidial_assistant.commands.base import ExecutionCallback, ResultObject
 from aidial_assistant.commands.run_plugin import RunPlugin
-from aidial_assistant.utils.state import StateField
+from aidial_assistant.utils.state import Invocation, State
 
 
 class PluginNameArgCallback(ArgCallback):
@@ -20,10 +21,10 @@ class PluginNameArgCallback(ArgCallback):
         super().__init__(0, callback)
 
     @override
-    def on_arg(self, token: str):
-        token = token.replace('"', "")
-        if len(token) > 0:
-            self.callback(token)
+    def on_arg(self, chunk: str):
+        chunk = chunk.replace('"', "")
+        if len(chunk) > 0:
+            self.callback(chunk)
 
     @override
     def on_arg_end(self):
@@ -47,7 +48,7 @@ class RunPluginArgsCallback(ArgsCallback):
             return ArgCallback(self.arg_index - 1, self.callback)
 
 
-class ServerCommandCallback(CommandCallback):
+class AssistantCommandCallback(CommandCallback):
     def __init__(self, stage: Stage):
         self.stage = stage
         self._args_callback = ArgsCallback(self._on_stage_name)
@@ -76,11 +77,11 @@ class ServerCommandCallback(CommandCallback):
     def on_error(self, error: BaseException):
         self.stage.append_content(f"\n{str(error)}")
 
-    def _on_stage_name(self, token: str):
-        self.stage.append_name(token)
+    def _on_stage_name(self, chunk: str):
+        self.stage.append_name(chunk)
 
-    def _on_stage_content(self, token: str):
-        self.stage.append_content(token)
+    def _on_stage_content(self, chunk: str):
+        self.stage.append_content(chunk)
 
     def __enter__(self):
         self.stage.__enter__()
@@ -99,40 +100,43 @@ class ServerCommandCallback(CommandCallback):
         self.stage.__exit__(__exc_type, __exc_value, __traceback)
 
 
-class ServerResultCallback(ResultCallback):
+class AssistantResultCallback(ResultCallback):
     def __init__(self, choice: Choice):
         self.choice = choice
 
-    def on_result(self, token):
-        self.choice.append_content(token)
+    def on_result(self, chunk: str):
+        self.choice.append_content(chunk)
 
 
-class ServerChainCallback(ChainCallback):
+class AssistantChainCallback(ChainCallback):
     def __init__(self, choice: Choice):
         self.choice = choice
-        self.state = {StateField.INVOCATIONS: []}
+        self._invocations: list[Invocation] = []
         self._invocation_index: int = -1
 
     @override
     def command_callback(self) -> CommandCallback:
-        return ServerCommandCallback(self.choice.create_stage())
+        return AssistantCommandCallback(self.choice.create_stage())
 
     @override
     def on_state(self, request: str, response: str):
         self._invocation_index += 1
-        self.state[StateField.INVOCATIONS].append(
-            {
-                StateField.INDEX: self._invocation_index,
-                StateField.REQUEST: request,
-                StateField.RESPONSE: response,
-            },
+        self._invocations.append(
+            Invocation(
+                index=self._invocation_index, request=request, response=response
+            )
         )
 
     @override
     def result_callback(self) -> ResultCallback:
-        return ServerResultCallback(self.choice)
+        return AssistantResultCallback(self.choice)
 
     @override
-    def on_error(self, title: str, error: Exception):
-        with self.choice.create_stage(title) as stage:
-            stage.append_content(f"Error: {str(error)}\n")
+    def on_error(self, title: str, error: str):
+        stage = self.choice.create_stage(title)
+        stage.open()
+        stage.append_content(f"Error: {error}\n")
+        stage.close(Status.FAILED)
+
+    def get_state(self):
+        return State(invocations=self._invocations)

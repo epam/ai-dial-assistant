@@ -4,9 +4,9 @@ from collections.abc import AsyncIterator
 
 from typing_extensions import override
 
+from aidial_assistant.json_stream.characterstream import CharacterStream
 from aidial_assistant.json_stream.exceptions import unexpected_symbol_error
 from aidial_assistant.json_stream.json_node import ComplexNode, NodeResolver
-from aidial_assistant.json_stream.tokenator import Tokenator
 
 
 class JsonString(ComplexNode[str], AsyncIterator[str]):
@@ -36,41 +36,43 @@ class JsonString(ComplexNode[str], AsyncIterator[str]):
         return result
 
     @override
-    async def parse(self, stream: Tokenator, dependency_resolver: NodeResolver):
-        async for token in JsonString.read(stream):
-            await self._listener.put(token)
+    async def parse(
+        self, stream: CharacterStream, dependency_resolver: NodeResolver
+    ):
+        async for chunk in JsonString.read(stream):
+            await self._listener.put(chunk)
         await self._listener.put(None)
 
     @override
-    async def to_string_tokens(self) -> AsyncIterator[str]:
+    async def to_string_chunks(self) -> AsyncIterator[str]:
         yield JsonString.token()
-        async for token in self:
-            yield json.dumps(token)[1:-1]
+        async for chunk in self:
+            yield json.dumps(chunk)[1:-1]
         yield JsonString.token()
 
     @staticmethod
-    async def read(stream: Tokenator) -> AsyncIterator[str]:
+    async def read(stream: CharacterStream) -> AsyncIterator[str]:
         char = await anext(stream)
         if not char == JsonString.token():
             raise unexpected_symbol_error(char, stream.char_position)
         result = ""
-        token_position = stream.token_position
+        chunk_position = stream.chunk_position
         while True:
             char = await anext(stream)
             if char == JsonString.token():
                 break
 
             result += await JsonString.escape(stream) if char == "\\" else char
-            if token_position != stream.token_position:
+            if chunk_position != stream.chunk_position:
                 yield result
                 result = ""
-                token_position = stream.token_position
+                chunk_position = stream.chunk_position
 
         if result:
             yield result
 
     @staticmethod
-    async def escape(stream: Tokenator) -> str:
+    async def escape(stream: CharacterStream) -> str:
         char = await anext(stream)
         if char == "u":
             unicode_sequence = "".join([await anext(stream) for _ in range(4)])  # type: ignore

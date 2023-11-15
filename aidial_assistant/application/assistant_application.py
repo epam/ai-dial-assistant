@@ -10,12 +10,15 @@ from aiohttp import hdrs
 from openai import InvalidRequestError, OpenAIError
 
 from aidial_assistant.application.args import parse_args
-from aidial_assistant.application.prompts import (
-    MAIN_SYSTEM_DIALOG_MESSAGE,
-    RESP_DIALOG_PROMPT,
+from aidial_assistant.application.assistant_callback import (
+    AssistantChainCallback,
 )
-from aidial_assistant.application.server_callback import ServerChainCallback
+from aidial_assistant.application.prompts import (
+    MAIN_BEST_EFFORT_TEMPLATE,
+    MAIN_SYSTEM_DIALOG_MESSAGE,
+)
 from aidial_assistant.chain.command_chain import CommandChain, CommandDict
+from aidial_assistant.chain.history import History
 from aidial_assistant.chain.model_client import (
     ModelClient,
     ReasonLengthException,
@@ -28,7 +31,7 @@ from aidial_assistant.utils.open_ai_plugin import (
     get_open_ai_plugin_info,
     get_plugin_auth,
 )
-from aidial_assistant.utils.state import get_system_prefix, parse_history
+from aidial_assistant.utils.state import parse_history
 
 logger = logging.getLogger(__name__)
 
@@ -107,25 +110,26 @@ class AssistantApplication(ChatCompletion):
         }
         chain = CommandChain(
             model_client=model,
-            name="SERVER",
-            resp_prompt=RESP_DIALOG_PROMPT,
+            name="ASSISTANT",
             command_dict=command_dict,
+            usage_publisher=usage_publisher,
         )
-        system_message = MAIN_SYSTEM_DIALOG_MESSAGE.render(
-            system_prefix=get_system_prefix(request.messages),
-            tools=tool_descriptions,
-        )
-        history = parse_history(
-            request.messages,
-            system_message,
+        history = History(
+            assistant_system_message_template=MAIN_SYSTEM_DIALOG_MESSAGE.build(
+                tools=tool_descriptions
+            ),
+            best_effort_template=MAIN_BEST_EFFORT_TEMPLATE.build(
+                tools=tool_descriptions
+            ),
+            scoped_messages=parse_history(request.messages),
         )
         choice = response.create_single_choice()
         choice.open()
 
-        callback = ServerChainCallback(choice)
+        callback = AssistantChainCallback(choice)
         finish_reason = FinishReason.STOP
         try:
-            await chain.run_chat(history, callback, usage_publisher)
+            await chain.run_chat(history, callback)
         except ReasonLengthException:
             finish_reason = FinishReason.LENGTH
         except OpenAIError as e:
@@ -138,7 +142,7 @@ class AssistantApplication(ChatCompletion):
 
             raise
 
-        choice.set_state(callback.state)
+        choice.set_state(callback.get_state())
         choice.close(finish_reason)
 
         response.set_usage(
