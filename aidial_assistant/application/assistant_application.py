@@ -22,7 +22,6 @@ from aidial_assistant.chain.history import History
 from aidial_assistant.chain.model_client import (
     ModelClient,
     ReasonLengthException,
-    UsagePublisher,
 )
 from aidial_assistant.commands.reply import Reply
 from aidial_assistant.commands.run_plugin import PluginInfo, RunPlugin
@@ -31,7 +30,7 @@ from aidial_assistant.utils.open_ai_plugin import (
     get_open_ai_plugin_info,
     get_plugin_auth,
 )
-from aidial_assistant.utils.state import parse_history
+from aidial_assistant.utils.state import State, parse_history
 
 logger = logging.getLogger(__name__)
 
@@ -103,16 +102,15 @@ class AssistantApplication(ChatCompletion):
                 or info.ai_plugin.description_for_human
             )
 
-        usage_publisher = UsagePublisher()
         command_dict: CommandDict = {
-            RunPlugin.token(): lambda: RunPlugin(model, tools, usage_publisher),
+            RunPlugin.token(): lambda: RunPlugin(model, tools),
             Reply.token(): Reply,
         }
         chain = CommandChain(
             model_client=model,
             name="ASSISTANT",
             command_dict=command_dict,
-            usage_publisher=usage_publisher,
+            max_prompt_tokens=request.max_prompt_tokens,
         )
         history = History(
             assistant_system_message_template=MAIN_SYSTEM_DIALOG_MESSAGE.build(
@@ -142,9 +140,12 @@ class AssistantApplication(ChatCompletion):
 
             raise
 
-        choice.set_state(callback.get_state())
+        if callback.invocations:
+            choice.set_state(State(invocations=callback.invocations))
+
         choice.close(finish_reason)
 
-        response.set_usage(
-            usage_publisher.prompt_tokens, usage_publisher.completion_tokens
-        )
+        if callback.discarded_messages is not None:
+            response.set_discarded_messages(callback.discarded_messages)
+
+        response.set_usage(model.prompt_tokens, model.completion_tokens)

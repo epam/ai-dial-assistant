@@ -4,6 +4,7 @@ from typing import Any, AsyncIterator, Callable, Tuple
 
 from aidial_sdk.chat_completion.request import Role
 from openai import InvalidRequestError
+from typing_extensions import override
 
 from aidial_assistant.application.prompts import ENFORCE_JSON_FORMAT_TEMPLATE
 from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
@@ -17,9 +18,10 @@ from aidial_assistant.chain.command_result import (
 from aidial_assistant.chain.dialogue import Dialogue
 from aidial_assistant.chain.history import History
 from aidial_assistant.chain.model_client import (
+    ExtraResultsCallback,
     Message,
     ModelClient,
-    UsagePublisher,
+    ReasonLengthException,
 )
 from aidial_assistant.chain.model_response_reader import (
     AssistantProtocolException,
@@ -46,8 +48,17 @@ CommandConstructor = Callable[[], Command]
 CommandDict = dict[str, CommandConstructor]
 
 
-class MaxRetryCountExceededException(Exception):
-    pass
+class ModelExtraResultsCallback(ExtraResultsCallback):
+    def __init__(self):
+        self._discarded_messages = None
+
+    @override
+    def on_discarded_messages(self, discarded_messages: int):
+        self._discarded_messages = discarded_messages
+
+    @property
+    def discarded_messages(self) -> int:
+        return self._discarded_messages
 
 
 class CommandChain:
@@ -56,13 +67,13 @@ class CommandChain:
         name: str,
         model_client: ModelClient,
         command_dict: CommandDict,
-        usage_publisher: UsagePublisher,
+        max_prompt_tokens: int | None = None,
         max_retry_count: int = DEFAULT_MAX_RETRY_COUNT,
     ):
         self.name = name
         self.model_client = model_client
         self.command_dict = command_dict
-        self.usage_publisher = usage_publisher
+        self.max_prompt_tokens = max_prompt_tokens
         self.max_retry_count = max_retry_count
 
     def _log_message(self, role: Role, content: str):
@@ -76,11 +87,11 @@ class CommandChain:
     async def run_chat(self, history: History, callback: ChainCallback):
         dialogue = Dialogue()
         try:
-            messages = history.to_protocol_messages()
+            history = await self._trim_history(history, callback)
+            messages = history.to_protocol_messages_with_system_message()
             while True:
                 pair = await self._run_with_protocol_failure_retries(
-                    callback,
-                    self._reinforce_json_format(messages + dialogue.messages),
+                    callback, messages + dialogue.messages
                 )
 
                 if pair is None:
@@ -110,15 +121,14 @@ class CommandChain:
     async def _run_with_protocol_failure_retries(
         self, callback: ChainCallback, messages: list[Message]
     ) -> Tuple[str, str] | None:
-        self._log_messages(messages)
         last_error: Exception | None = None
         try:
-            retry: int = 0
+            self._log_messages(messages)
             retries = Dialogue()
             while True:
                 chunk_stream = CumulativeStream(
                     self.model_client.agenerate(
-                        messages + retries.messages, self.usage_publisher
+                        self._reinforce_json_format(messages + retries.messages)
                     )
                 )
                 try:
@@ -137,15 +147,17 @@ class CommandChain:
                 except (JsonParsingException, AssistantProtocolException) as e:
                     logger.exception("Failed to process model response")
 
+                    retry_count = len(retries.messages) // 2
                     callback.on_error(
-                        "Error" if retry == 0 else f"Error (retry {retry})",
+                        "Error"
+                        if retry_count == 0
+                        else f"Error (retry {retry_count})",
                         "The model failed to construct addon request.",
                     )
 
-                    if retry >= self.max_retry_count:
+                    if retry_count >= self.max_retry_count:
                         raise
 
-                    retry += 1
                     last_error = e
                     retries.append(
                         chunk_stream.buffer, json.dumps({"error": str(e)})
@@ -154,6 +166,8 @@ class CommandChain:
                     self._log_message(Role.ASSISTANT, chunk_stream.buffer)
         except InvalidRequestError as e:
             if last_error:
+                # Retries can increase the prompt size, which may lead to token overflow.
+                # Thus, if the original error was a protocol error, it should be thrown instead.
                 raise last_error
 
             callback.on_error("Error", str(e))
@@ -206,9 +220,40 @@ class CommandChain:
     async def _generate_result(
         self, messages: list[Message], callback: ChainCallback
     ):
-        stream = self.model_client.agenerate(messages, self.usage_publisher)
+        stream = self.model_client.agenerate(messages)
 
         await CommandChain._to_result(stream, callback.result_callback())
+
+    async def _trim_history(
+        self, history: History, callback: ChainCallback
+    ) -> History:
+        if self.max_prompt_tokens is None:
+            return history
+
+        extra_results_callback = ModelExtraResultsCallback()
+        stream = self.model_client.agenerate(
+            history.to_protocol_messages(),
+            extra_results_callback,
+            max_prompt_tokens=self.max_prompt_tokens,
+            max_tokens=1,
+        )
+        try:
+            async for _ in stream:
+                pass
+        except ReasonLengthException:
+            # Expected for max_tokens=1
+            pass
+
+        if extra_results_callback.discarded_messages:
+            old_size = history.user_message_count()
+            history = history.trim(extra_results_callback.discarded_messages)
+            callback.on_discarded_messages(
+                old_size - history.user_message_count()
+            )
+        else:
+            callback.on_discarded_messages(0)
+
+        return history
 
     @staticmethod
     def _reinforce_json_format(messages: list[Message]) -> list[Message]:

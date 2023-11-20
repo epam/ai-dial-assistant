@@ -2,13 +2,13 @@
 
 [[package]]
 name = "aidial-sdk"
-version = "0.1.0"
+version = "0.2.0"
 description = "Framework to create applications and model adapters for AI DIAL"
 optional = false
 python-versions = ">=3.8.1,<4.0"
 files = [
-    {file = "aidial_sdk-0.1.0-py3-none-any.whl", hash = "sha256:596c9e7aca688e56b1749fb70b0c97ebd508827b6a39cfe6035a3b860cf9f7af"},
-    {file = "aidial_sdk-0.1.0.tar.gz", hash = "sha256:fe8fa9ea9d3ccd3f9e719daac08d8dd946f423cb4f2511d9ec43bcc747ef51ad"},
+    {file = "aidial_sdk-0.2.0-py3-none-any.whl", hash = "sha256:ce3c2e2ea5ef133d2594bb64c7a70f54970e1f8339608ecfb47b0f955e1536e7"},
+    {file = "aidial_sdk-0.2.0.tar.gz", hash = "sha256:fcb00ccfa6fbed7482d6d78828a95ba7e29f45269708cfc3691db9711b91f3fe"},
 ]
 
 [package.dependencies]
@@ -18,6 +18,9 @@ pydantic = ">=1.10,<3"
 requests = ">=2.19,<3.0"
 uvicorn = ">=0.19,<1.0"
 wrapt = ">=1.14,<2.0"
+
+[package.extras]
+telemetry = ["opentelemetry-api (==1.20.0)", "opentelemetry-distro (==0.41b0)", "opentelemetry-exporter-otlp-proto-grpc (==1.20.0)", "opentelemetry-exporter-prometheus (==1.12.0rc1)", "opentelemetry-instrumentation (==0.41b0)", "opentelemetry-instrumentation-aiohttp-client (==0.41b0)", "opentelemetry-instrumentation-fastapi (==0.41b0)", "opentelemetry-instrumentation-logging (==0.41b0)", "opentelemetry-instrumentation-requests (==0.41b0)", "opentelemetry-instrumentation-system-metrics (==0.41b0)", "opentelemetry-instrumentation-urllib (==0.41b0)", "opentelemetry-sdk (==1.20.0)", "starlette-exporter (==0.16.0)"]
 
 [[package]]
 name = "aiocache"
@@ -1799,4 +1802,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "972ada4089261f2dfc28b15540f1bec5795c3ef1e195de3964fcac4379ffb6f2"
+content-hash = "a85434ee232e0702717090df26e27727380ad097771af38b9f0787b037a2d2d1"

@@ -17,7 +17,6 @@ from aidial_assistant.chain.model_client import (
     Message,
     ModelClient,
     ReasonLengthException,
-    UsagePublisher,
 )
 from aidial_assistant.commands.base import (
     Command,
@@ -39,14 +38,10 @@ class PluginInfo(BaseModel):
 
 class RunPlugin(Command):
     def __init__(
-        self,
-        model_client: ModelClient,
-        plugins: dict[str, PluginInfo],
-        usage_publisher: UsagePublisher,
+        self, model_client: ModelClient, plugins: dict[str, PluginInfo]
     ):
         self.model_client = model_client
         self.plugins = plugins
-        self.usage_publisher = usage_publisher
 
     @staticmethod
     def token():
@@ -60,21 +55,10 @@ class RunPlugin(Command):
         name = args[0]
         query = args[1]
 
-        return await self._run_plugin(
-            name,
-            query,
-            self.model_client,
-            self.usage_publisher,
-            execution_callback,
-        )
+        return await self._run_plugin(name, query, execution_callback)
 
     async def _run_plugin(
-        self,
-        name: str,
-        query: str,
-        model_client: ModelClient,
-        usage_publisher: UsagePublisher,
-        execution_callback: ExecutionCallback,
+        self, name: str, query: str, execution_callback: ExecutionCallback
     ) -> ResultObject:
         if name not in self.plugins:
             raise ValueError(
@@ -110,10 +94,9 @@ class RunPlugin(Command):
         )
 
         chat = CommandChain(
-            model_client=model_client,
+            model_client=self.model_client,
             name="PLUGIN:" + name,
             command_dict=command_dict,
-            usage_publisher=usage_publisher,
         )
 
         callback = PluginChainCallback(execution_callback)
