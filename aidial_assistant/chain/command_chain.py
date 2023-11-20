@@ -50,14 +50,14 @@ CommandDict = dict[str, CommandConstructor]
 
 class ModelExtraResultsCallback(ExtraResultsCallback):
     def __init__(self):
-        self._discarded_messages = None
+        self._discarded_messages: int | None = None
 
     @override
     def on_discarded_messages(self, discarded_messages: int):
         self._discarded_messages = discarded_messages
 
     @property
-    def discarded_messages(self) -> int:
+    def discarded_messages(self) -> int | None:
         return self._discarded_messages
 
 
