@@ -10,6 +10,7 @@ from aidial_assistant.chain.model_client import (
     Message,
     ModelClient,
     ReasonLengthException,
+    ExtraResultsCallback,
 )
 
 TRIMMING_TEST_DATA = [
@@ -26,8 +27,10 @@ MAX_PROMPT_TOKENS = 123
 class ModelSideEffect(BaseModel):
     discarded_messages: int
 
-    async def agenerate(self, _, callback, **kwargs) -> AsyncIterator[str]:
-        callback.on_discarded_messages(self.discarded_messages)
+    async def agenerate(
+        self, _, callback: ExtraResultsCallback, **kwargs
+    ) -> AsyncIterator[str]:
+        callback.set_discarded_messages(self.discarded_messages)
         yield "dummy"
         raise ReasonLengthException()
 
