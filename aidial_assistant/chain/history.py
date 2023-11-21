@@ -86,11 +86,10 @@ class History:
 
     def to_protocol_messages_with_system_message(self) -> list[Message]:
         messages = self.to_protocol_messages()
-        first_message = next(iter(messages))
-        if first_message and first_message.role == Role.SYSTEM:
+        if messages[0].role == Role.SYSTEM:
             messages[0] = Message.system(
                 self.assistant_system_message_template.render(
-                    system_prefix=first_message.content
+                    system_prefix=messages[0].content
                 )
             )
         else:

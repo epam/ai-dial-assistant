@@ -1,10 +1,9 @@
 import logging
 from pathlib import Path
 
-from aidial_sdk import HTTPException
 from aidial_sdk.chat_completion import FinishReason
 from aidial_sdk.chat_completion.base import ChatCompletion
-from aidial_sdk.chat_completion.request import Addon, Request
+from aidial_sdk.chat_completion.request import Addon, Message, Request, Role
 from aidial_sdk.chat_completion.response import Response
 from aiohttp import hdrs
 
@@ -12,7 +11,6 @@ from aidial_assistant.application.args import parse_args
 from aidial_assistant.application.assistant_callback import (
     AssistantChainCallback,
 )
-from aidial_assistant.application.error_decorator import openai_error_decorator
 from aidial_assistant.application.prompts import (
     MAIN_BEST_EFFORT_TEMPLATE,
     MAIN_SYSTEM_DIALOG_MESSAGE,
@@ -25,6 +23,10 @@ from aidial_assistant.chain.model_client import (
 )
 from aidial_assistant.commands.reply import Reply
 from aidial_assistant.commands.run_plugin import PluginInfo, RunPlugin
+from aidial_assistant.utils.exceptions import (
+    RequestParameterValidationError,
+    unhandled_exception_handler,
+)
 from aidial_assistant.utils.open_ai_plugin import (
     AddonTokenSource,
     get_open_ai_plugin_info,
@@ -52,21 +54,26 @@ def _get_request_args(request: Request) -> dict[str, str]:
 
 def _extract_addon_url(addon: Addon) -> str:
     if addon.url is None:
-        raise HTTPException(
+        raise RequestParameterValidationError(
             "Missing required addon url.",
-            status_code=400,
-            type="invalid_request_error",
             param="addons",
         )
 
     return addon.url
 
 
+def _validate_messages(messages: list[Message]) -> None:
+    if messages[-1].role != Role.USER:
+        raise RequestParameterValidationError(
+            "Last message must be from the user.", param="messages"
+        )
+
+
 class AssistantApplication(ChatCompletion):
     def __init__(self, config_dir: Path):
         self.args = parse_args(config_dir)
 
-    @openai_error_decorator
+    @unhandled_exception_handler
     async def chat_completion(
         self, request: Request, response: Response
     ) -> None:
@@ -118,6 +125,7 @@ class AssistantApplication(ChatCompletion):
             command_dict=command_dict,
             max_prompt_tokens=request.max_prompt_tokens,
         )
+        _validate_messages(request.messages)
         history = History(
             assistant_system_message_template=MAIN_SYSTEM_DIALOG_MESSAGE.build(
                 tools=tool_descriptions
