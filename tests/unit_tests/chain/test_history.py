@@ -7,10 +7,10 @@ from pydantic import BaseModel
 
 from aidial_assistant.chain.history import History, MessageScope, ScopedMessage
 from aidial_assistant.chain.model_client import (
+    ExtraResultsCallback,
     Message,
     ModelClient,
     ReasonLengthException,
-    ExtraResultsCallback,
 )
 
 TRIMMING_TEST_DATA = [
