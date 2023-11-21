@@ -22,7 +22,3 @@ class ChainCallback(ABC):
     @abstractmethod
     def on_error(self, title: str, error: str):
         """Called when an error occurs"""
-
-    @abstractmethod
-    def on_discarded_messages(self, count: int):
-        """Called when there are discarded messages"""

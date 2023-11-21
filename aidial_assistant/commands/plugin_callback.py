@@ -81,10 +81,6 @@ class PluginChainCallback(ChainCallback):
     def on_error(self, title: str, error: str):
         pass
 
-    @override
-    def on_discarded_messages(self, count: int):
-        pass
-
     @property
     def result(self) -> str:
         return self._result

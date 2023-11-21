@@ -139,14 +139,6 @@ class AssistantChainCallback(ChainCallback):
         stage.append_content(f"Error: {error}\n")
         stage.close(Status.FAILED)
 
-    @override
-    def on_discarded_messages(self, count: int):
-        self._discarded_messages = count
-
-    @property
-    def discarded_messages(self) -> int:
-        return self._discarded_messages
-
     @property
     def invocations(self) -> list[Invocation]:
         return self._invocations

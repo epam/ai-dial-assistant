@@ -4,7 +4,6 @@ from typing import Any, AsyncIterator, Callable, Tuple
 
 from aidial_sdk.chat_completion.request import Role
 from openai import InvalidRequestError
-from typing_extensions import override
 
 from aidial_assistant.application.prompts import ENFORCE_JSON_FORMAT_TEMPLATE
 from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
@@ -17,12 +16,7 @@ from aidial_assistant.chain.command_result import (
 )
 from aidial_assistant.chain.dialogue import Dialogue
 from aidial_assistant.chain.history import History
-from aidial_assistant.chain.model_client import (
-    ExtraResultsCallback,
-    Message,
-    ModelClient,
-    ReasonLengthException,
-)
+from aidial_assistant.chain.model_client import Message, ModelClient
 from aidial_assistant.chain.model_response_reader import (
     AssistantProtocolException,
     CommandsReader,
@@ -46,19 +40,6 @@ MAX_MODEL_COMPLETION_CHUNKS = 32000
 
 CommandConstructor = Callable[[], Command]
 CommandDict = dict[str, CommandConstructor]
-
-
-class ModelExtraResultsCallback(ExtraResultsCallback):
-    def __init__(self):
-        self._discarded_messages: int | None = None
-
-    @override
-    def on_discarded_messages(self, discarded_messages: int):
-        self._discarded_messages = discarded_messages
-
-    @property
-    def discarded_messages(self) -> int | None:
-        return self._discarded_messages
 
 
 class CommandChain:
@@ -87,7 +68,6 @@ class CommandChain:
     async def run_chat(self, history: History, callback: ChainCallback):
         dialogue = Dialogue()
         try:
-            history = await self._trim_history(history, callback)
             messages = history.to_protocol_messages_with_system_message()
             while True:
                 pair = await self._run_with_protocol_failure_retries(
@@ -223,37 +203,6 @@ class CommandChain:
         stream = self.model_client.agenerate(messages)
 
         await CommandChain._to_result(stream, callback.result_callback())
-
-    async def _trim_history(
-        self, history: History, callback: ChainCallback
-    ) -> History:
-        if self.max_prompt_tokens is None:
-            return history
-
-        extra_results_callback = ModelExtraResultsCallback()
-        stream = self.model_client.agenerate(
-            history.to_protocol_messages(),
-            extra_results_callback,
-            max_prompt_tokens=self.max_prompt_tokens,
-            max_tokens=1,
-        )
-        try:
-            async for _ in stream:
-                pass
-        except ReasonLengthException:
-            # Expected for max_tokens=1
-            pass
-
-        if extra_results_callback.discarded_messages:
-            old_size = history.user_message_count()
-            history = history.trim(extra_results_callback.discarded_messages)
-            callback.on_discarded_messages(
-                old_size - history.user_message_count()
-            )
-        else:
-            callback.on_discarded_messages(0)
-
-        return history
 
     @staticmethod
     def _reinforce_json_format(messages: list[Message]) -> list[Message]:

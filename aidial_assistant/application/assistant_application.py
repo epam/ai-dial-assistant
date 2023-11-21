@@ -7,12 +7,12 @@ from aidial_sdk.chat_completion.base import ChatCompletion
 from aidial_sdk.chat_completion.request import Addon, Request
 from aidial_sdk.chat_completion.response import Response
 from aiohttp import hdrs
-from openai import InvalidRequestError, OpenAIError
 
 from aidial_assistant.application.args import parse_args
 from aidial_assistant.application.assistant_callback import (
     AssistantChainCallback,
 )
+from aidial_assistant.application.error_decorator import openai_error_decorator
 from aidial_assistant.application.prompts import (
     MAIN_BEST_EFFORT_TEMPLATE,
     MAIN_SYSTEM_DIALOG_MESSAGE,
@@ -35,7 +35,7 @@ from aidial_assistant.utils.state import State, parse_history
 logger = logging.getLogger(__name__)
 
 
-def get_request_args(request: Request) -> dict[str, str]:
+def _get_request_args(request: Request) -> dict[str, str]:
     args = {
         "model": request.model,
         "temperature": request.temperature,
@@ -52,7 +52,12 @@ def get_request_args(request: Request) -> dict[str, str]:
 
 def _extract_addon_url(addon: Addon) -> str:
     if addon.url is None:
-        raise InvalidRequestError("Missing required addon url.", param="")
+        raise HTTPException(
+            "Missing required addon url.",
+            status_code=400,
+            type="invalid_request_error",
+            param="addons",
+        )
 
     return addon.url
 
@@ -61,10 +66,11 @@ class AssistantApplication(ChatCompletion):
     def __init__(self, config_dir: Path):
         self.args = parse_args(config_dir)
 
+    @openai_error_decorator
     async def chat_completion(
         self, request: Request, response: Response
     ) -> None:
-        chat_args = self.args.openai_conf.dict() | get_request_args(request)
+        chat_args = self.args.openai_conf.dict() | _get_request_args(request)
 
         model = ModelClient(
             model_args=chat_args
@@ -121,6 +127,12 @@ class AssistantApplication(ChatCompletion):
             ),
             scoped_messages=parse_history(request.messages),
         )
+        discarded_messages: int | None = None
+        if request.max_prompt_tokens is not None:
+            old_size = history.user_message_count()
+            history = await history.trim(request.max_prompt_tokens, model)
+            discarded_messages = old_size - history.user_message_count()
+
         choice = response.create_single_choice()
         choice.open()
 
@@ -130,22 +142,13 @@ class AssistantApplication(ChatCompletion):
             await chain.run_chat(history, callback)
         except ReasonLengthException:
             finish_reason = FinishReason.LENGTH
-        except OpenAIError as e:
-            if e.error:
-                raise HTTPException(
-                    e.error.message,
-                    status_code=e.http_status or 500,
-                    code=e.error.code,
-                )
-
-            raise
 
         if callback.invocations:
             choice.set_state(State(invocations=callback.invocations))
 
         choice.close(finish_reason)
 
-        if callback.discarded_messages is not None:
-            response.set_discarded_messages(callback.discarded_messages)
-
         response.set_usage(model.prompt_tokens, model.completion_tokens)
+
+        if discarded_messages:
+            response.set_discarded_messages(discarded_messages)

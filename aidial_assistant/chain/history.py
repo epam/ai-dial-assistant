@@ -4,10 +4,20 @@ from enum import Enum
 from aidial_sdk.chat_completion import Role
 from jinja2 import Template
 from pydantic import BaseModel
+from typing_extensions import override
 
 from aidial_assistant.chain.dialogue import Dialogue
-from aidial_assistant.chain.model_client import Message
+from aidial_assistant.chain.model_client import (
+    ExtraResultsCallback,
+    Message,
+    ModelClient,
+    ReasonLengthException,
+)
 from aidial_assistant.commands.reply import Reply
+
+
+class ContextLengthExceeded(Exception):
+    pass
 
 
 class MessageScope(str, Enum):
@@ -18,6 +28,19 @@ class MessageScope(str, Enum):
 class ScopedMessage(BaseModel):
     scope: MessageScope = MessageScope.USER
     message: Message
+
+
+class ModelExtraResultsCallback(ExtraResultsCallback):
+    def __init__(self):
+        self._discarded_messages: int | None = None
+
+    @override
+    def on_discarded_messages(self, discarded_messages: int):
+        self._discarded_messages = discarded_messages
+
+    @property
+    def discarded_messages(self) -> int | None:
+        return self._discarded_messages
 
 
 class History:
@@ -102,28 +125,62 @@ class History:
 
         return messages
 
-    def trim(self, message_count: int) -> "History":
-        if message_count >= len(self.scoped_messages):
-            raise ValueError(
-                f"Cannot trim {message_count} messages from history with {len(self.scoped_messages)} messages."
+    async def trim(
+        self, max_prompt_tokens: int, model_client: ModelClient
+    ) -> "History":
+        extra_results_callback = ModelExtraResultsCallback()
+        stream = model_client.agenerate(
+            self.to_protocol_messages(),
+            extra_results_callback,
+            max_prompt_tokens=max_prompt_tokens,
+            max_tokens=1,
+        )
+        try:
+            async for _ in stream:
+                pass
+        except ReasonLengthException:
+            # Expected for max_tokens=1
+            pass
+
+        if extra_results_callback.discarded_messages:
+            return History(
+                assistant_system_message_template=self.assistant_system_message_template,
+                best_effort_template=self.best_effort_template,
+                scoped_messages=self._skip_messages(
+                    extra_results_callback.discarded_messages
+                ),
             )
 
-        if message_count == 0:
-            return self
+        return self
 
-        last_discarded_message = self.scoped_messages[message_count - 1]
-        if last_discarded_message.scope == MessageScope.INTERNAL:
-            while last_discarded_message.scope == MessageScope.INTERNAL:
-                last_discarded_message = self.scoped_messages[message_count]
-                message_count += 1
+    def _skip_messages(self, message_count: int) -> list[ScopedMessage]:
+        messages = []
+        current_message = self.scoped_messages[0]
+        message_iterator = iter(self.scoped_messages)
+        for _ in range(message_count):
+            current_message = next(message_iterator)
+            while current_message.message.role == Role.SYSTEM:
+                # System messages should be kept in the history
+                messages.append(current_message)
+                current_message = next(message_iterator)
 
-            assert last_discarded_message.message.role == Role.ASSISTANT
+        if current_message.scope == MessageScope.INTERNAL:
+            while current_message.scope == MessageScope.INTERNAL:
+                current_message = next(message_iterator)
 
-        return History(
-            assistant_system_message_template=self.assistant_system_message_template,
-            best_effort_template=self.best_effort_template,
-            scoped_messages=self.scoped_messages[message_count:],
-        )
+            # Internal messages (i.e. addon requests/responses) are always followed by an assistant reply
+            assert (
+                current_message.message.role == Role.ASSISTANT
+            ), "Internal messages must be followed by an assistant reply."
+
+        remaining_messages = list(message_iterator)
+        assert (
+            len(remaining_messages) > 0
+        ), "No user messages left after history truncation."
+
+        messages += remaining_messages
+
+        return messages
 
     def user_message_count(self) -> int:
         return self._user_message_count
