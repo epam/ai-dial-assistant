@@ -79,7 +79,7 @@ class ModelClient(ABC):
                     discarded_messages: int | None = chunk.get(
                         "statistics", {}
                     ).get("discarded_messages")
-                    if discarded_messages:
+                    if discarded_messages is not None:
                         extra_results_callback.set_discarded_messages(
                             discarded_messages
                         )
