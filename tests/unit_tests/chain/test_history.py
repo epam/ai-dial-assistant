@@ -6,7 +6,7 @@ from jinja2 import Template
 from pydantic import BaseModel
 
 from aidial_assistant.chain.history import History, MessageScope, ScopedMessage
-from aidial_assistant.chain.model_client import (
+from aidial_assistant.model.model_client import (
     ExtraResultsCallback,
     Message,
     ModelClient,
@@ -24,21 +24,12 @@ TRIMMING_TEST_DATA = [
 MAX_PROMPT_TOKENS = 123
 
 
-class ModelSideEffect(BaseModel):
-    discarded_messages: int
-
-    async def agenerate(
-        self, _, callback: ExtraResultsCallback, **kwargs
-    ) -> AsyncIterator[str]:
-        callback.on_discarded_messages(self.discarded_messages)
-        yield "dummy"
-        raise ReasonLengthException()
-
-
 @pytest.mark.asyncio
-@pytest.mark.parametrize("message_count,expected_indices", TRIMMING_TEST_DATA)
+@pytest.mark.parametrize(
+    "discarded_messages,expected_indices", TRIMMING_TEST_DATA
+)
 async def test_history_trimming(
-    message_count: int, expected_indices: list[int]
+    discarded_messages: int, expected_indices: list[int]
 ):
     history = History(
         assistant_system_message_template=Template(""),
@@ -59,9 +50,8 @@ async def test_history_trimming(
         ],
     )
 
-    side_effect = ModelSideEffect(discarded_messages=message_count)
     model_client = Mock(spec=ModelClient)
-    model_client.agenerate.side_effect = side_effect.agenerate
+    model_client.get_discarded_messages.return_value = discarded_messages
 
     actual = await history.trim(MAX_PROMPT_TOKENS, model_client)
 
@@ -73,10 +63,6 @@ async def test_history_trimming(
     assert actual.scoped_messages == [
         history.scoped_messages[i] for i in expected_indices
     ]
-    assert (
-        model_client.agenerate.call_args.kwargs["max_prompt_tokens"]
-        == MAX_PROMPT_TOKENS
-    )
 
 
 @pytest.mark.asyncio
@@ -90,9 +76,8 @@ async def test_trimming_overflow():
         ],
     )
 
-    side_effect = ModelSideEffect(discarded_messages=1)
     model_client = Mock(spec=ModelClient)
-    model_client.agenerate.side_effect = side_effect.agenerate
+    model_client.get_discarded_messages.return_value = 1
 
     with pytest.raises(Exception) as exc_info:
         await history.trim(MAX_PROMPT_TOKENS, model_client)
@@ -115,9 +100,8 @@ async def test_trimming_with_incorrect_message_sequence():
         ],
     )
 
-    side_effect = ModelSideEffect(discarded_messages=1)
     model_client = Mock(spec=ModelClient)
-    model_client.agenerate.side_effect = side_effect.agenerate
+    model_client.get_discarded_messages.return_value = 1
 
     with pytest.raises(Exception) as exc_info:
         await history.trim(MAX_PROMPT_TOKENS, model_client)

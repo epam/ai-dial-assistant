@@ -13,7 +13,7 @@ from aidial_assistant.chain.command_chain import (
     CommandConstructor,
 )
 from aidial_assistant.chain.history import History, ScopedMessage
-from aidial_assistant.chain.model_client import (
+from aidial_assistant.model.model_client import (
     Message,
     ModelClient,
     ReasonLengthException,
@@ -38,10 +38,14 @@ class PluginInfo(BaseModel):
 
 class RunPlugin(Command):
     def __init__(
-        self, model_client: ModelClient, plugins: dict[str, PluginInfo]
+        self,
+        model_client: ModelClient,
+        plugins: dict[str, PluginInfo],
+        max_tokens: int,
     ):
         self.model_client = model_client
         self.plugins = plugins
+        self.max_tokens = max_tokens
 
     @staticmethod
     def token():
@@ -97,6 +101,7 @@ class RunPlugin(Command):
             model_client=self.model_client,
             name="PLUGIN:" + name,
             command_dict=command_dict,
+            max_tokens=self.max_tokens,
         )
 
         callback = PluginChainCallback(execution_callback)

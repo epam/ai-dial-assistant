@@ -15,9 +15,10 @@ from aidial_assistant.application.prompts import (
     MAIN_BEST_EFFORT_TEMPLATE,
     MAIN_SYSTEM_DIALOG_MESSAGE,
 )
+from aidial_assistant.chain.addons_dialogue_limiter import AddonsDialogueLimiter
 from aidial_assistant.chain.command_chain import CommandChain, CommandDict
 from aidial_assistant.chain.history import History
-from aidial_assistant.chain.model_client import (
+from aidial_assistant.model.model_client import (
     ModelClient,
     ReasonLengthException,
 )
@@ -115,8 +116,12 @@ class AssistantApplication(ChatCompletion):
                 or info.ai_plugin.description_for_human
             )
 
+        # TODO: Add max_addons_dialogue_tokens as a request parameter
+        max_addons_dialogue_tokens = 1000
         command_dict: CommandDict = {
-            RunPlugin.token(): lambda: RunPlugin(model, tools),
+            RunPlugin.token(): lambda: RunPlugin(
+                model, tools, max_addons_dialogue_tokens
+            ),
             Reply.token(): Reply,
         }
         chain = CommandChain(
@@ -138,13 +143,17 @@ class AssistantApplication(ChatCompletion):
             history = await history.trim(request.max_prompt_tokens, model)
             discarded_messages = old_size - history.user_message_count()
 
+        addons_dialogue_limiter = await AddonsDialogueLimiter.create(
+            history, model, max_addons_dialogue_tokens
+        )
+
         choice = response.create_single_choice()
         choice.open()
 
         callback = AssistantChainCallback(choice)
         finish_reason = FinishReason.STOP
         try:
-            await chain.run_chat(history, callback)
+            await chain.run_chat(history, callback, addons_dialogue_limiter)
         except ReasonLengthException:
             finish_reason = FinishReason.LENGTH
 
@@ -153,7 +162,9 @@ class AssistantApplication(ChatCompletion):
 
         choice.close(finish_reason)
 
-        response.set_usage(model.prompt_tokens, model.completion_tokens)
+        response.set_usage(
+            model.total_prompt_tokens, model.total_completion_tokens
+        )
 
         if discarded_messages:
             response.set_discarded_messages(discarded_messages)

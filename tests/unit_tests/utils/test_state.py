@@ -1,7 +1,7 @@
 from aidial_sdk.chat_completion import CustomContent, Message, Role
 
 from aidial_assistant.chain.history import MessageScope, ScopedMessage
-from aidial_assistant.chain.model_client import Message as ModelMessage
+from aidial_assistant.model.model_client import Message as ModelMessage
 from aidial_assistant.utils.state import parse_history
 
 FIRST_USER_MESSAGE = "<first user message>"

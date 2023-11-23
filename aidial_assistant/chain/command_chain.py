@@ -6,6 +6,10 @@ from aidial_sdk.chat_completion.request import Role
 from openai import InvalidRequestError
 
 from aidial_assistant.application.prompts import ENFORCE_JSON_FORMAT_TEMPLATE
+from aidial_assistant.chain.addons_dialogue_limiter import (
+    AddonsDialogueLimiter,
+    DialogueLimitExceededException,
+)
 from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
 from aidial_assistant.chain.callbacks.command_callback import CommandCallback
 from aidial_assistant.chain.callbacks.result_callback import ResultCallback
@@ -14,9 +18,9 @@ from aidial_assistant.chain.command_result import (
     Status,
     responses_to_text,
 )
-from aidial_assistant.chain.dialogue import Dialogue
+from aidial_assistant.chain.dialogue import Dialogue, Exchange
 from aidial_assistant.chain.history import History
-from aidial_assistant.chain.model_client import Message, ModelClient
+from aidial_assistant.model.model_client import Message, ModelClient
 from aidial_assistant.chain.model_response_reader import (
     AssistantProtocolException,
     CommandsReader,
@@ -48,11 +52,15 @@ class CommandChain:
         name: str,
         model_client: ModelClient,
         command_dict: CommandDict,
+        max_tokens: int | None = None,
         max_retry_count: int = DEFAULT_MAX_RETRY_COUNT,
     ):
         self.name = name
         self.model_client = model_client
         self.command_dict = command_dict
+        self.model_extra_args = (
+            {} if max_tokens is None else {"max_tokens": max_tokens}
+        )
         self.max_retry_count = max_retry_count
 
     def _log_message(self, role: Role, content: str):
@@ -63,19 +71,26 @@ class CommandChain:
             for message in messages:
                 self._log_message(message.role, message.content)
 
-    async def run_chat(self, history: History, callback: ChainCallback):
+    async def run_chat(
+        self,
+        history: History,
+        callback: ChainCallback,
+        addons_dialogue_limiter: AddonsDialogueLimiter | None = None,
+    ):
         dialogue = Dialogue()
         try:
             messages = history.to_protocol_messages_with_system_message()
             while True:
-                pair = await self._run_with_protocol_failure_retries(
-                    callback, messages + dialogue.messages
+                exchange = await self._run_with_protocol_failure_retries(
+                    callback,
+                    messages + dialogue.messages,
+                    None if dialogue.is_empty() else addons_dialogue_limiter,
                 )
 
-                if pair is None:
+                if exchange is None:
                     break
 
-                dialogue.append(pair[0], pair[1])
+                dialogue.append(exchange)
         except (JsonParsingException, AssistantProtocolException):
             messages = (
                 history.to_best_effort_messages(
@@ -86,27 +101,39 @@ class CommandChain:
                 else history.to_client_messages()
             )
             await self._generate_result(messages, callback)
-        except InvalidRequestError as e:
-            if dialogue.is_empty() or e.code == "429":
+        except (InvalidRequestError, DialogueLimitExceededException) as e:
+            if dialogue.is_empty() or (
+                isinstance(e, InvalidRequestError) and e.code == "429"
+            ):
                 raise
 
             # Assuming the context length is exceeded
             dialogue.pop()
+            # TODO: Limit the error message size. The error message should not exceed reserved assistant overheads.
             await self._generate_result(
                 history.to_best_effort_messages(str(e), dialogue), callback
             )
 
     async def _run_with_protocol_failure_retries(
-        self, callback: ChainCallback, messages: list[Message]
-    ) -> Tuple[str, str] | None:
+        self,
+        callback: ChainCallback,
+        messages: list[Message],
+        addons_dialogue_limiter: AddonsDialogueLimiter | None = None,
+    ) -> Exchange | None:
         last_error: Exception | None = None
         try:
             self._log_messages(messages)
             retries = Dialogue()
             while True:
+                all_messages = self._reinforce_json_format(
+                    messages + retries.messages
+                )
+                if addons_dialogue_limiter:
+                    await addons_dialogue_limiter.verify_limit(all_messages)
+
                 chunk_stream = CumulativeStream(
                     self.model_client.agenerate(
-                        self._reinforce_json_format(messages + retries.messages)
+                        all_messages, **self.model_extra_args
                     )
                 )
                 try:
@@ -119,13 +146,16 @@ class CommandChain:
                         response_text = responses_to_text(responses)
 
                         callback.on_state(request_text, response_text)
-                        return request_text, response_text
+                        return Exchange(
+                            assistant_message=request_text,
+                            user_message=response_text,
+                        )
 
-                    return None
+                    break
                 except (JsonParsingException, AssistantProtocolException) as e:
                     logger.exception("Failed to process model response")
 
-                    retry_count = len(retries.messages) // 2
+                    retry_count = retries.exchange_count()
                     callback.on_error(
                         "Error"
                         if retry_count == 0
@@ -138,11 +168,14 @@ class CommandChain:
 
                     last_error = e
                     retries.append(
-                        chunk_stream.buffer, json.dumps({"error": str(e)})
+                        Exchange(
+                            assistant_message=chunk_stream.buffer,
+                            user_message=json.dumps({"error": str(e)}),
+                        )
                     )
                 finally:
                     self._log_message(Role.ASSISTANT, chunk_stream.buffer)
-        except InvalidRequestError as e:
+        except (InvalidRequestError, DialogueLimitExceededException) as e:
             if last_error:
                 # Retries can increase the prompt size, which may lead to token overflow.
                 # Thus, if the original error was a protocol error, it should be thrown instead.

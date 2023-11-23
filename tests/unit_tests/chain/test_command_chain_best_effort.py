@@ -10,7 +10,7 @@ from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
 from aidial_assistant.chain.callbacks.result_callback import ResultCallback
 from aidial_assistant.chain.command_chain import CommandChain
 from aidial_assistant.chain.history import History, ScopedMessage
-from aidial_assistant.chain.model_client import Message, ModelClient
+from aidial_assistant.model.model_client import Message, ModelClient
 from aidial_assistant.commands.base import Command, TextResult
 from tests.utils.async_helper import to_async_string, to_async_strings
 
