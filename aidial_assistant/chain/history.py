@@ -35,7 +35,7 @@ class ModelExtraResultsCallback(ExtraResultsCallback):
         self._discarded_messages: int | None = None
 
     @override
-    def set_discarded_messages(self, discarded_messages: int):
+    def on_discarded_messages(self, discarded_messages: int):
         self._discarded_messages = discarded_messages
 
     @property

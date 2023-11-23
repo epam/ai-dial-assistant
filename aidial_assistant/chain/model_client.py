@@ -38,7 +38,7 @@ class Usage(TypedDict):
 
 class ExtraResultsCallback(ABC):
     @abstractmethod
-    def set_discarded_messages(self, discarded_messages: int):
+    def on_discarded_messages(self, discarded_messages: int):
         pass
 
 
@@ -80,7 +80,7 @@ class ModelClient(ABC):
                         "statistics", {}
                     ).get("discarded_messages")
                     if discarded_messages is not None:
-                        extra_results_callback.set_discarded_messages(
+                        extra_results_callback.on_discarded_messages(
                             discarded_messages
                         )
 

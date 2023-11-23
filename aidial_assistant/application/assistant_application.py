@@ -120,10 +120,7 @@ class AssistantApplication(ChatCompletion):
             Reply.token(): Reply,
         }
         chain = CommandChain(
-            model_client=model,
-            name="ASSISTANT",
-            command_dict=command_dict,
-            max_prompt_tokens=request.max_prompt_tokens,
+            model_client=model, name="ASSISTANT", command_dict=command_dict
         )
         _validate_messages(request.messages)
         history = History(

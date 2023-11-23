@@ -33,7 +33,7 @@ async def test_discarded_messages(api):
 
     await join_string(model_client.agenerate([], extra_results_callback))
 
-    assert extra_results_callback.set_discarded_messages.call_args_list == [
+    assert extra_results_callback.on_discarded_messages.call_args_list == [
         call(2)
     ]
 

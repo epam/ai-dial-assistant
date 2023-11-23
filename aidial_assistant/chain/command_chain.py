@@ -48,13 +48,11 @@ class CommandChain:
         name: str,
         model_client: ModelClient,
         command_dict: CommandDict,
-        max_prompt_tokens: int | None = None,
         max_retry_count: int = DEFAULT_MAX_RETRY_COUNT,
     ):
         self.name = name
         self.model_client = model_client
         self.command_dict = command_dict
-        self.max_prompt_tokens = max_prompt_tokens
         self.max_retry_count = max_retry_count
 
     def _log_message(self, role: Role, content: str):

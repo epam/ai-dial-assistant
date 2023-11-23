@@ -30,7 +30,7 @@ class ModelSideEffect(BaseModel):
     async def agenerate(
         self, _, callback: ExtraResultsCallback, **kwargs
     ) -> AsyncIterator[str]:
-        callback.set_discarded_messages(self.discarded_messages)
+        callback.on_discarded_messages(self.discarded_messages)
         yield "dummy"
         raise ReasonLengthException()
 
