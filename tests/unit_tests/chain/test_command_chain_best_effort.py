@@ -8,10 +8,14 @@ from openai import InvalidRequestError
 
 from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
 from aidial_assistant.chain.callbacks.result_callback import ResultCallback
-from aidial_assistant.chain.command_chain import CommandChain
+from aidial_assistant.chain.command_chain import (
+    CommandChain,
+    LimitExceededException,
+    ModelRequestLimiter,
+)
 from aidial_assistant.chain.history import History, ScopedMessage
-from aidial_assistant.model.model_client import Message, ModelClient
 from aidial_assistant.commands.base import Command, TextResult
+from aidial_assistant.model.model_client import Message, ModelClient
 from tests.utils.async_helper import to_async_string, to_async_strings
 
 SYSTEM_MESSAGE = "<system message>"
@@ -20,6 +24,7 @@ ENFORCE_JSON_FORMAT = "**Remember to reply with a JSON with commands**"
 BEST_EFFORT_ANSWER = "<best effort answer>"
 NO_TOKENS_ERROR = "No tokens left"
 FAILED_PROTOCOL_ERROR = "The next constructed API request is incorrect."
+LIMIT_EXCEEDED_ERROR = "<limit exceeded error>"
 TEST_COMMAND_NAME = "<test command>"
 TEST_COMMAND_OUTPUT = "<test command result>"
 TEST_COMMAND_REQUEST = json.dumps(
@@ -193,6 +198,72 @@ async def test_no_tokens_for_tools():
                 Message.user(
                     f"user_message={USER_MESSAGE}, error={NO_TOKENS_ERROR}, dialogue=[]"
                 ),
+            ]
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_model_request_limit_exceeded():
+    model_client = Mock(spec=ModelClient)
+    model_client.agenerate.side_effect = to_async_strings(
+        [TEST_COMMAND_REQUEST, BEST_EFFORT_ANSWER]
+    )
+    test_command = Mock(spec=Command)
+    test_command.execute.return_value = TextResult(TEST_COMMAND_OUTPUT)
+    command_chain = CommandChain(
+        name="TEST",
+        model_client=model_client,
+        command_dict={TEST_COMMAND_NAME: lambda *_: test_command},
+        max_retry_count=0,
+    )
+    chain_callback = MagicMock(spec=ChainCallback)
+    result_callback = Mock(spec=ResultCallback)
+    chain_callback.result_callback.return_value = result_callback
+    model_request_limiter = Mock(spec=ModelRequestLimiter)
+    model_request_limiter.verify_limit.side_effect = [
+        None,
+        LimitExceededException(LIMIT_EXCEEDED_ERROR),
+    ]
+
+    await command_chain.run_chat(
+        history=TEST_HISTORY,
+        callback=chain_callback,
+        model_request_limiter=model_request_limiter,
+    )
+
+    assert result_callback.on_result.call_args_list == [
+        call(BEST_EFFORT_ANSWER)
+    ]
+    assert model_client.agenerate.call_args_list == [
+        call(
+            [
+                Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
+                Message.user(f"{USER_MESSAGE}\n{ENFORCE_JSON_FORMAT}"),
+            ]
+        ),
+        call(
+            [
+                Message.system(SYSTEM_MESSAGE),
+                Message.user(
+                    f"user_message={USER_MESSAGE}, error={LIMIT_EXCEEDED_ERROR}, dialogue=[]"
+                ),
+            ]
+        ),
+    ]
+    assert model_request_limiter.verify_limit.call_args_list == [
+        call(
+            [
+                Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
+                Message.user(f"{USER_MESSAGE}\n{ENFORCE_JSON_FORMAT}"),
+            ]
+        ),
+        call(
+            [
+                Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
+                Message.user(USER_MESSAGE),
+                Message.assistant(TEST_COMMAND_REQUEST),
+                Message.user(f"{TEST_COMMAND_RESPONSE}\n{ENFORCE_JSON_FORMAT}"),
             ]
         ),
     ]

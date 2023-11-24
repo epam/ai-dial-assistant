@@ -1,17 +1,10 @@
-from typing import AsyncIterator
 from unittest.mock import Mock
 
 import pytest
 from jinja2 import Template
-from pydantic import BaseModel
 
 from aidial_assistant.chain.history import History, MessageScope, ScopedMessage
-from aidial_assistant.model.model_client import (
-    ExtraResultsCallback,
-    Message,
-    ModelClient,
-    ReasonLengthException,
-)
+from aidial_assistant.model.model_client import Message, ModelClient
 
 TRIMMING_TEST_DATA = [
     (0, [0, 1, 2, 3, 4, 5, 6]),

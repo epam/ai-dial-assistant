@@ -7,6 +7,9 @@ from aidial_sdk.chat_completion.request import Addon, Message, Request, Role
 from aidial_sdk.chat_completion.response import Response
 from aiohttp import hdrs
 
+from aidial_assistant.application.addons_dialogue_limiter import (
+    AddonsDialogueLimiter,
+)
 from aidial_assistant.application.args import parse_args
 from aidial_assistant.application.assistant_callback import (
     AssistantChainCallback,
@@ -15,15 +18,14 @@ from aidial_assistant.application.prompts import (
     MAIN_BEST_EFFORT_TEMPLATE,
     MAIN_SYSTEM_DIALOG_MESSAGE,
 )
-from aidial_assistant.chain.addons_dialogue_limiter import AddonsDialogueLimiter
 from aidial_assistant.chain.command_chain import CommandChain, CommandDict
 from aidial_assistant.chain.history import History
+from aidial_assistant.commands.reply import Reply
+from aidial_assistant.commands.run_plugin import PluginInfo, RunPlugin
 from aidial_assistant.model.model_client import (
     ModelClient,
     ReasonLengthException,
 )
-from aidial_assistant.commands.reply import Reply
-from aidial_assistant.commands.run_plugin import PluginInfo, RunPlugin
 from aidial_assistant.utils.exceptions import (
     RequestParameterValidationError,
     unhandled_exception_handler,
@@ -143,17 +145,16 @@ class AssistantApplication(ChatCompletion):
             history = await history.trim(request.max_prompt_tokens, model)
             discarded_messages = old_size - history.user_message_count()
 
-        addons_dialogue_limiter = await AddonsDialogueLimiter.create(
-            history, model, max_addons_dialogue_tokens
-        )
-
         choice = response.create_single_choice()
         choice.open()
 
         callback = AssistantChainCallback(choice)
         finish_reason = FinishReason.STOP
         try:
-            await chain.run_chat(history, callback, addons_dialogue_limiter)
+            model_request_limiter = AddonsDialogueLimiter(
+                max_addons_dialogue_tokens, model
+            )
+            await chain.run_chat(history, callback, model_request_limiter)
         except ReasonLengthException:
             finish_reason = FinishReason.LENGTH
 

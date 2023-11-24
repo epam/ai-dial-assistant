@@ -4,17 +4,11 @@ from enum import Enum
 from aidial_sdk.chat_completion import Role
 from jinja2 import Template
 from pydantic import BaseModel
-from typing_extensions import override
 
 from aidial_assistant.application.prompts import ENFORCE_JSON_FORMAT_TEMPLATE
 from aidial_assistant.chain.dialogue import Dialogue
-from aidial_assistant.model.model_client import (
-    ExtraResultsCallback,
-    Message,
-    ModelClient,
-    ReasonLengthException,
-)
 from aidial_assistant.commands.reply import Reply
+from aidial_assistant.model.model_client import Message, ModelClient
 
 
 class ContextLengthExceeded(Exception):

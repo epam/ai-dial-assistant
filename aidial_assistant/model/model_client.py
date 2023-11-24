@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any, AsyncIterator, List, TypedDict
 
 import openai
@@ -108,6 +108,8 @@ class ModelClient(ABC):
             if finish_reason_length:
                 raise ReasonLengthException()
 
+    # TODO: Use a dedicated endpoint for counting tokens.
+    #  This request may throw an error if the number of tokens is too large.
     async def count_tokens(self, messages: list[Message]) -> int:
         class PromptTokensCallback(ExtraResultsCallback):
             def __init__(self):
@@ -127,6 +129,7 @@ class ModelClient(ABC):
 
         return callback.token_count
 
+    # TODO: Use a dedicated endpoint for discarded_messages.
     async def get_discarded_messages(
         self, messages: list[Message], max_prompt_tokens: int
     ) -> int:
