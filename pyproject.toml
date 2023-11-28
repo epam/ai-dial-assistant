@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aidial-assistant"
-version = "0.3.0rc"
+version = "0.2.2"
 description = "DIAL Assistant Service"
 authors = ["EPAM RAIL <SpecialEPM-DIALDevTeam@epam.com>"]
 homepage = "https://epam-rail.com"
