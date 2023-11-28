@@ -150,7 +150,8 @@ class CommandChain:
                     retry += 1
                     last_error = e
                     retries.append(
-                        chunk_stream.buffer, json.dumps({"error": str(e)})
+                        chunk_stream.buffer,
+                        "Failed to parse JSON commands: " + str(e),
                     )
                 finally:
                     self._log_message(Role.ASSISTANT, chunk_stream.buffer)

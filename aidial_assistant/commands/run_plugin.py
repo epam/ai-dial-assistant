@@ -5,8 +5,8 @@ from pydantic.main import BaseModel
 from typing_extensions import override
 
 from aidial_assistant.application.prompts import (
-    PLUGIN_BEST_EFFORT_TEMPLATE,
-    PLUGIN_SYSTEM_DIALOG_MESSAGE,
+    ADDON_BEST_EFFORT_TEMPLATE,
+    ADDON_SYSTEM_DIALOG_MESSAGE,
 )
 from aidial_assistant.chain.command_chain import (
     CommandChain,
@@ -50,7 +50,7 @@ class RunPlugin(Command):
 
     @staticmethod
     def token():
-        return "run-plugin"
+        return "run-addon"
 
     @override
     async def execute(
@@ -78,7 +78,7 @@ class RunPlugin(Command):
     ) -> ResultObject:
         if name not in self.plugins:
             raise ValueError(
-                f"Unknown plugin: {name}. Available plugins: {[*self.plugins.keys()]}"
+                f"Unknown addon: {name}. Available addons: {[*self.plugins.keys()]}"
             )
 
         plugin = self.plugins[name]
@@ -98,12 +98,12 @@ class RunPlugin(Command):
         command_dict[Reply.token()] = Reply
 
         history = History(
-            assistant_system_message_template=PLUGIN_SYSTEM_DIALOG_MESSAGE.build(
+            assistant_system_message_template=ADDON_SYSTEM_DIALOG_MESSAGE.build(
                 command_names=ops.keys(),
                 api_description=info.ai_plugin.description_for_model,
                 api_schema=api_schema,
             ),
-            best_effort_template=PLUGIN_BEST_EFFORT_TEMPLATE.build(
+            best_effort_template=ADDON_BEST_EFFORT_TEMPLATE.build(
                 api_schema=api_schema
             ),
             scoped_messages=[ScopedMessage(message=Message.user(query))],
