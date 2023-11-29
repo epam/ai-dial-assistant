@@ -163,14 +163,16 @@ async def test_json_parsing(json_string: str):
 
 @pytest.mark.asyncio
 async def test_incomplete_json_parsing():
-    json_string = """
+    incomplete_json_string = """
     {
       "test": "field"
     """
     node = object_node(
-        await JsonParser.parse(CharacterStream(_split_into_chunks(json_string)))
+        await JsonParser.parse(
+            CharacterStream(_split_into_chunks(incomplete_json_string))
+        )
     )
-    key, value = await anext(node)
+    _, value = await anext(node)
     await string_node(value).read_to_end()
 
     assert node.value() == {"test": "field"}

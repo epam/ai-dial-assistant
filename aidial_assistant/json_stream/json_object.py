@@ -44,36 +44,6 @@ class JsonObject(ReadableNode[dict[str, Any], Tuple[str, JsonNode]]):
 
         raise KeyError(key)
 
-    @override
-    async def to_string_chunks(self) -> AsyncIterator[str]:
-        yield JsonObject.token()
-        separate = False
-        async for key, value in self:
-            if separate:
-                yield ", "
-            yield json.dumps(key)
-            yield ": "
-            async for chunk in value.to_string_chunks():
-                yield chunk
-            separate = True
-        yield "}"
-
-    @override
-    def value(self) -> dict[str, Any]:
-        return {k: v.value() for k, v in self._object.items()}
-
-    @override
-    def _accumulate(self, element: Tuple[str, JsonNode]):
-        self._object[element[0]] = element[1]
-
-    @classmethod
-    def parse(
-        cls, stream: CharacterStream, dependency_resolver: NodeResolver
-    ) -> "JsonObject":
-        return cls(
-            JsonObject.read(stream, dependency_resolver), stream.char_position
-        )
-
     @staticmethod
     async def read(
         stream: CharacterStream, dependency_resolver: NodeResolver
@@ -123,3 +93,33 @@ class JsonObject(ReadableNode[dict[str, Any], Tuple[str, JsonNode]]):
                     raise unexpected_symbol_error(char, stream.char_position)
         except StopAsyncIteration:
             raise unexpected_end_of_stream_error(stream.char_position)
+
+    @override
+    async def to_string_chunks(self) -> AsyncIterator[str]:
+        yield JsonObject.token()
+        separate = False
+        async for key, value in self:
+            if separate:
+                yield ", "
+            yield json.dumps(key)
+            yield ": "
+            async for chunk in value.to_string_chunks():
+                yield chunk
+            separate = True
+        yield "}"
+
+    @override
+    def value(self) -> dict[str, Any]:
+        return {k: v.value() for k, v in self._object.items()}
+
+    @override
+    def _accumulate(self, element: Tuple[str, JsonNode]):
+        self._object[element[0]] = element[1]
+
+    @classmethod
+    def parse(
+        cls, stream: CharacterStream, dependency_resolver: NodeResolver
+    ) -> "JsonObject":
+        return cls(
+            JsonObject.read(stream, dependency_resolver), stream.char_position
+        )

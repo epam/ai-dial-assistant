@@ -45,18 +45,6 @@ class JsonArray(ReadableNode[list[Any], JsonNode]):
     def value(self) -> list[JsonNode]:
         return [item.value() for item in self._array]
 
-    @override
-    def _accumulate(self, element: JsonNode):
-        self._array.append(element)
-
-    @classmethod
-    def parse(
-        cls, stream: CharacterStream, dependency_resolver: NodeResolver
-    ) -> "JsonArray":
-        return cls(
-            JsonArray.read(stream, dependency_resolver), stream.char_position
-        )
-
     @staticmethod
     async def read(
         stream: CharacterStream, dependency_resolver: NodeResolver
@@ -91,3 +79,15 @@ class JsonArray(ReadableNode[list[Any], JsonNode]):
                     separate = True
         except StopAsyncIteration:
             raise unexpected_end_of_stream_error(stream.char_position)
+
+    @override
+    def _accumulate(self, element: JsonNode):
+        self._array.append(element)
+
+    @classmethod
+    def parse(
+        cls, stream: CharacterStream, dependency_resolver: NodeResolver
+    ) -> "JsonArray":
+        return cls(
+            JsonArray.read(stream, dependency_resolver), stream.char_position
+        )
