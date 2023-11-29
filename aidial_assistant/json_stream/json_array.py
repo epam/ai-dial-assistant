@@ -29,22 +29,6 @@ class JsonArray(ReadableNode[list[Any], JsonNode]):
     def token() -> str:
         return "["
 
-    @override
-    async def to_string_chunks(self) -> AsyncIterator[str]:
-        yield JsonArray.token()
-        separate = False
-        async for value in self:
-            if separate:
-                yield ", "
-            async for chunk in value.to_string_chunks():
-                yield chunk
-            separate = True
-        yield "]"
-
-    @override
-    def value(self) -> list[JsonNode]:
-        return [item.value() for item in self._array]
-
     @staticmethod
     async def read(
         stream: CharacterStream, dependency_resolver: NodeResolver
@@ -79,6 +63,22 @@ class JsonArray(ReadableNode[list[Any], JsonNode]):
                     separate = True
         except StopAsyncIteration:
             raise unexpected_end_of_stream_error(stream.char_position)
+
+    @override
+    async def to_string_chunks(self) -> AsyncIterator[str]:
+        yield JsonArray.token()
+        separate = False
+        async for value in self:
+            if separate:
+                yield ", "
+            async for chunk in value.to_string_chunks():
+                yield chunk
+            separate = True
+        yield "]"
+
+    @override
+    def value(self) -> list[JsonNode]:
+        return [item.value() for item in self._array]
 
     @override
     def _accumulate(self, element: JsonNode):
