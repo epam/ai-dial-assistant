@@ -8,3 +8,9 @@ def unexpected_symbol_error(
     return JsonParsingException(
         f"Failed to parse json string: unexpected symbol {char} at position {char_position}"
     )
+
+
+def unexpected_end_of_stream_error(char_position: int) -> JsonParsingException:
+    return JsonParsingException(
+        f"Failed to parse json string: unexpected end of stream at position {char_position}"
+    )

@@ -35,7 +35,7 @@ You should ALWAYS reply with a JSON containing an array of commands:
     {
       "command": "<command name>",
       "args": [
-        // <array of arguments>
+        "arr1", "arg2", ...
       ]
     }
   ]
