@@ -239,7 +239,7 @@ async def test_model_request_limit_exceeded():
         call(
             [
                 Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
-                Message.user(f"{USER_MESSAGE}\n{ENFORCE_JSON_FORMAT}"),
+                Message.user(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(
@@ -255,7 +255,7 @@ async def test_model_request_limit_exceeded():
         call(
             [
                 Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
-                Message.user(f"{USER_MESSAGE}\n{ENFORCE_JSON_FORMAT}"),
+                Message.user(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(
@@ -263,7 +263,7 @@ async def test_model_request_limit_exceeded():
                 Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
                 Message.user(USER_MESSAGE),
                 Message.assistant(TEST_COMMAND_REQUEST),
-                Message.user(f"{TEST_COMMAND_RESPONSE}\n{ENFORCE_JSON_FORMAT}"),
+                Message.user(f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
     ]
