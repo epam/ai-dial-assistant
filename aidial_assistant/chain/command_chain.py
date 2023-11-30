@@ -68,7 +68,7 @@ class CommandChain:
     async def run_chat(self, history: History, callback: ChainCallback):
         dialogue = Dialogue()
         try:
-            messages = history.to_protocol_messages_with_system_message()
+            messages = history.to_protocol_messages()
             while True:
                 pair = await self._run_with_protocol_failure_retries(
                     callback, messages + dialogue.messages
@@ -85,7 +85,7 @@ class CommandChain:
                     dialogue,
                 )
                 if not dialogue.is_empty()
-                else history.to_client_messages()
+                else history.to_user_messages()
             )
             await self._generate_result(messages, callback)
         except InvalidRequestError as e:

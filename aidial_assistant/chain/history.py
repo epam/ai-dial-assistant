@@ -65,29 +65,7 @@ class History:
         )
 
     def to_protocol_messages(self) -> list[Message]:
-        messages: list[Message] = []
-        for scoped_message in self.scoped_messages:
-            message = scoped_message.message
-            if (
-                scoped_message.scope == MessageScope.USER
-                and message.role == Role.ASSISTANT
-            ):
-                # Clients see replies in plain text, but the model should understand how to reply appropriately.
-                content = commands_to_text(
-                    [
-                        CommandInvocation(
-                            command=Reply.token(), args=[message.content]
-                        )
-                    ]
-                )
-                messages.append(Message.assistant(content=content))
-            else:
-                messages.append(message)
-
-        return messages
-
-    def to_protocol_messages_with_system_message(self) -> list[Message]:
-        messages = self.to_protocol_messages()
+        messages = self._format_assistant_commands()
         if messages[0].role == Role.SYSTEM:
             messages[0] = Message.system(
                 self.assistant_system_message_template.render(
@@ -102,7 +80,7 @@ class History:
 
         return messages
 
-    def to_client_messages(self) -> list[Message]:
+    def to_user_messages(self) -> list[Message]:
         return [
             scoped_message.message
             for scoped_message in self.scoped_messages
@@ -112,7 +90,7 @@ class History:
     def to_best_effort_messages(
         self, error: str, dialogue: Dialogue
     ) -> list[Message]:
-        messages = self.to_client_messages()
+        messages = self.to_user_messages()
 
         last_message = messages[-1]
         messages[-1] = Message(
@@ -126,12 +104,15 @@ class History:
 
         return messages
 
-    async def trim(
+    async def truncate(
         self, max_prompt_tokens: int, model_client: ModelClient
     ) -> "History":
         extra_results_callback = ModelExtraResultsCallback()
+        # TODO: This will be replaced with a dedicated truncation call on model client once implemented.
         stream = model_client.agenerate(
-            self.to_protocol_messages(),
+            # It is not expected for the user to include the assistant system message overhead
+            # in the max_prompt_tokens parameter, as it is unknown to the user.
+            self._format_assistant_commands(),
             extra_results_callback,
             max_prompt_tokens=max_prompt_tokens,
             max_tokens=1,
@@ -154,11 +135,37 @@ class History:
 
         return self
 
-    def _skip_messages(self, message_count: int) -> list[ScopedMessage]:
-        messages = []
+    @property
+    def user_message_count(self) -> int:
+        return self._user_message_count
+
+    def _format_assistant_commands(self) -> list[Message]:
+        messages: list[Message] = []
+        for scoped_message in self.scoped_messages:
+            message = scoped_message.message
+            if (
+                scoped_message.scope == MessageScope.USER
+                and message.role == Role.ASSISTANT
+            ):
+                # Clients see replies in plain text, but the model should understand how to reply appropriately.
+                content = commands_to_text(
+                    [
+                        CommandInvocation(
+                            command=Reply.token(), args=[message.content]
+                        )
+                    ]
+                )
+                messages.append(Message.assistant(content=content))
+            else:
+                messages.append(message)
+
+        return messages
+
+    def _skip_messages(self, discarded_messages: int) -> list[ScopedMessage]:
+        messages: list[ScopedMessage] = []
         current_message = self.scoped_messages[0]
         message_iterator = iter(self.scoped_messages)
-        for _ in range(message_count):
+        for _ in range(discarded_messages):
             current_message = next(message_iterator)
             while current_message.message.role == Role.SYSTEM:
                 # System messages should be kept in the history
@@ -182,6 +189,3 @@ class History:
         messages += remaining_messages
 
         return messages
-
-    def user_message_count(self) -> int:
-        return self._user_message_count

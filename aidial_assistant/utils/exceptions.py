@@ -26,7 +26,7 @@ def _to_http_exception(e: Exception) -> HTTPException:
             param=e.param,
         )
 
-    if isinstance(e, OpenAIError) and e.error:
+    if isinstance(e, OpenAIError):
         http_status = e.http_status or 500
         if e.error:
             return HTTPException(
@@ -37,7 +37,7 @@ def _to_http_exception(e: Exception) -> HTTPException:
                 param=e.error.param,
             )
 
-        return HTTPException(message=e.error, status_code=http_status)
+        return HTTPException(message=str(e), status_code=http_status)
 
     return HTTPException(
         message=str(e), status_code=500, type="internal_server_error"

@@ -13,7 +13,7 @@ from aidial_assistant.chain.model_client import (
     ReasonLengthException,
 )
 
-TRIMMING_TEST_DATA = [
+TRUNCATION_TEST_DATA = [
     (0, [0, 1, 2, 3, 4, 5, 6]),
     (1, [0, 2, 3, 4, 5, 6]),
     (2, [0, 2, 6]),
@@ -36,9 +36,11 @@ class ModelSideEffect(BaseModel):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("message_count,expected_indices", TRIMMING_TEST_DATA)
-async def test_history_trimming(
-    message_count: int, expected_indices: list[int]
+@pytest.mark.parametrize(
+    "discarded_messages,expected_indices", TRUNCATION_TEST_DATA
+)
+async def test_history_truncation(
+    discarded_messages: int, expected_indices: list[int]
 ):
     history = History(
         assistant_system_message_template=Template(""),
@@ -59,11 +61,11 @@ async def test_history_trimming(
         ],
     )
 
-    side_effect = ModelSideEffect(discarded_messages=message_count)
+    side_effect = ModelSideEffect(discarded_messages=discarded_messages)
     model_client = Mock(spec=ModelClient)
     model_client.agenerate.side_effect = side_effect.agenerate
 
-    actual = await history.trim(MAX_PROMPT_TOKENS, model_client)
+    actual = await history.truncate(MAX_PROMPT_TOKENS, model_client)
 
     assert (
         actual.assistant_system_message_template
@@ -80,7 +82,7 @@ async def test_history_trimming(
 
 
 @pytest.mark.asyncio
-async def test_trimming_overflow():
+async def test_truncation_overflow():
     history = History(
         assistant_system_message_template=Template(""),
         best_effort_template=Template(""),
@@ -95,7 +97,7 @@ async def test_trimming_overflow():
     model_client.agenerate.side_effect = side_effect.agenerate
 
     with pytest.raises(Exception) as exc_info:
-        await history.trim(MAX_PROMPT_TOKENS, model_client)
+        await history.truncate(MAX_PROMPT_TOKENS, model_client)
 
     assert (
         str(exc_info.value) == "No user messages left after history truncation."
@@ -103,7 +105,7 @@ async def test_trimming_overflow():
 
 
 @pytest.mark.asyncio
-async def test_trimming_with_incorrect_message_sequence():
+async def test_truncation_with_incorrect_message_sequence():
     history = History(
         assistant_system_message_template=Template(""),
         best_effort_template=Template(""),
@@ -120,7 +122,7 @@ async def test_trimming_with_incorrect_message_sequence():
     model_client.agenerate.side_effect = side_effect.agenerate
 
     with pytest.raises(Exception) as exc_info:
-        await history.trim(MAX_PROMPT_TOKENS, model_client)
+        await history.truncate(MAX_PROMPT_TOKENS, model_client)
 
     assert (
         str(exc_info.value)
@@ -144,7 +146,7 @@ def test_protocol_messages_with_system_message():
         ],
     )
 
-    assert history.to_protocol_messages_with_system_message() == [
+    assert history.to_protocol_messages() == [
         Message.system(f"system message={system_message}"),
         Message.user(user_message),
         Message.assistant(

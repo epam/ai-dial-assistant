@@ -10,7 +10,7 @@ from aidial_assistant.chain.model_client import (
     ReasonLengthException,
 )
 from aidial_assistant.utils.text import join_string
-from tests.utils.async_helper import to_async_list
+from tests.utils.async_helper import to_async_iterator
 
 API_METHOD = "openai.ChatCompletion.acreate"
 MODEL_ARGS = {"model": "args"}
@@ -21,7 +21,7 @@ BUFFER_SIZE = 321
 @pytest.mark.asyncio
 async def test_discarded_messages(api):
     model_client = ModelClient(MODEL_ARGS, BUFFER_SIZE)
-    api.return_value = to_async_list(
+    api.return_value = to_async_iterator(
         [
             {
                 "choices": [{"delta": {"content": ""}}],
@@ -42,7 +42,7 @@ async def test_discarded_messages(api):
 @pytest.mark.asyncio
 async def test_content(api):
     model_client = ModelClient(MODEL_ARGS, BUFFER_SIZE)
-    api.return_value = to_async_list(
+    api.return_value = to_async_iterator(
         [
             {"choices": [{"delta": {"content": "one, "}}]},
             {"choices": [{"delta": {"content": "two, "}}]},
@@ -57,7 +57,7 @@ async def test_content(api):
 @pytest.mark.asyncio
 async def test_reason_length_with_usage(api):
     model_client = ModelClient(MODEL_ARGS, BUFFER_SIZE)
-    api.return_value = to_async_list(
+    api.return_value = to_async_iterator(
         [
             {"choices": [{"delta": {"content": "text"}}]},
             {
@@ -84,7 +84,7 @@ async def test_reason_length_with_usage(api):
 @pytest.mark.asyncio
 async def test_api_args(api):
     model_client = ModelClient(MODEL_ARGS, BUFFER_SIZE)
-    api.return_value = to_async_list([])
+    api.return_value = to_async_iterator([])
     messages = [
         Message.system(content="a"),
         Message.user(content="b"),
