@@ -1,6 +1,6 @@
 from aidial_assistant.application.prompts import (
+    ADDON_BEST_EFFORT_TEMPLATE,
     MAIN_BEST_EFFORT_TEMPLATE,
-    PLUGIN_BEST_EFFORT_TEMPLATE,
 )
 
 
@@ -65,9 +65,7 @@ Please respond to the query using the available information, and explaining that
 
 
 def test_plugin_best_effort_prompt():
-    actual = PLUGIN_BEST_EFFORT_TEMPLATE.build(
-        api_schema="<api schema>"
-    ).render(
+    actual = ADDON_BEST_EFFORT_TEMPLATE.build(api_schema="<api schema>").render(
         error="<error>",
         message="<message>",
         dialogue=[{"role": "<role>", "content": "<content>"}],
@@ -99,9 +97,7 @@ Please respond to the query using the available information, and explaining that
 
 
 def test_plugin_best_effort_prompt_with_empty_dialogue():
-    actual = PLUGIN_BEST_EFFORT_TEMPLATE.build(
-        api_schema="<api schema>"
-    ).render(
+    actual = ADDON_BEST_EFFORT_TEMPLATE.build(api_schema="<api schema>").render(
         error="<error>",
         message="<message>",
         dialogue=[],

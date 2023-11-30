@@ -126,3 +126,28 @@ async def test_trimming_with_incorrect_message_sequence():
         str(exc_info.value)
         == "Internal messages must be followed by an assistant reply."
     )
+
+
+def test_protocol_messages_with_system_message():
+    system_message = "<system message>"
+    user_message = "<user message>"
+    assistant_message = "<assistant message>"
+    history = History(
+        assistant_system_message_template=Template(
+            "system message={{system_prefix}}"
+        ),
+        best_effort_template=Template(""),
+        scoped_messages=[
+            ScopedMessage(message=Message.system(system_message)),
+            ScopedMessage(message=Message.user(user_message)),
+            ScopedMessage(message=Message.assistant(assistant_message)),
+        ],
+    )
+
+    assert history.to_protocol_messages_with_system_message() == [
+        Message.system(f"system message={system_message}"),
+        Message.user(user_message),
+        Message.assistant(
+            f'{{"commands": [{{"command": "reply", "args": ["{assistant_message}"]}}]}}'
+        ),
+    ]
