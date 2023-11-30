@@ -55,21 +55,31 @@ def _get_request_args(request: Request) -> dict[str, str]:
     return {k: v for k, v in args.items() if v is not None}
 
 
-def _extract_addon_url(addon: Addon) -> str:
-    if addon.url is None:
-        raise RequestParameterValidationError(
-            "Missing required addon url.",
-            param="addons",
-        )
-
-    return addon.url
+def _validate_addons(addons: list[Addon] | None):
+    if addons and any(addon.url is None for addon in addons):
+        for index, addon in enumerate(addons):
+            if addon.url is None:
+                raise RequestParameterValidationError(
+                    f"Missing required addon url at index {index}.",
+                    param="addons",
+                )
 
 
 def _validate_messages(messages: list[Message]) -> None:
+    if not messages:
+        raise RequestParameterValidationError(
+            "Message list cannot be empty.", param="messages"
+        )
+
     if messages[-1].role != Role.USER:
         raise RequestParameterValidationError(
             "Last message must be from the user.", param="messages"
         )
+
+
+def _validate_request(request: Request) -> None:
+    _validate_messages(request.messages)
+    _validate_addons(request.addons)
 
 
 class AssistantApplication(ChatCompletion):
@@ -80,6 +90,7 @@ class AssistantApplication(ChatCompletion):
     async def chat_completion(
         self, request: Request, response: Response
     ) -> None:
+        _validate_request(request)
         chat_args = self.args.openai_conf.dict() | _get_request_args(request)
 
         model = ModelClient(
@@ -92,10 +103,8 @@ class AssistantApplication(ChatCompletion):
             buffer_size=self.args.chat_conf.buffer_size,
         )
 
-        addons = (
-            [_extract_addon_url(addon) for addon in request.addons]
-            if request.addons
-            else []
+        addons: list[str] = (
+            [addon.url for addon in request.addons] if request.addons else []  # type: ignore
         )
         token_source = AddonTokenSource(request.headers, addons)
 
@@ -129,7 +138,6 @@ class AssistantApplication(ChatCompletion):
         chain = CommandChain(
             model_client=model, name="ASSISTANT", command_dict=command_dict
         )
-        _validate_messages(request.messages)
         history = History(
             assistant_system_message_template=MAIN_SYSTEM_DIALOG_MESSAGE.build(
                 tools=tool_descriptions
@@ -141,9 +149,10 @@ class AssistantApplication(ChatCompletion):
         )
         discarded_messages: int | None = None
         if request.max_prompt_tokens is not None:
-            old_size = history.user_message_count()
-            history = await history.trim(request.max_prompt_tokens, model)
-            discarded_messages = old_size - history.user_message_count()
+            original_size = history.user_message_count
+            history = await history.truncate(request.max_prompt_tokens, model)
+            truncated_size = history.user_message_count
+            discarded_messages = original_size - truncated_size
 
         choice = response.create_single_choice()
         choice.open()
@@ -167,5 +176,5 @@ class AssistantApplication(ChatCompletion):
             model.total_prompt_tokens, model.total_completion_tokens
         )
 
-        if discarded_messages:
+        if discarded_messages is not None:
             response.set_discarded_messages(discarded_messages)

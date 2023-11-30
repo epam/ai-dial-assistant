@@ -1,4 +1,4 @@
-from typing import AsyncIterator, TypeVar
+from typing import AsyncIterator, Iterable, TypeVar
 
 T = TypeVar("T")
 
@@ -17,6 +17,6 @@ def to_async_repeated_string(
     return [to_async_string(string) for _ in range(count)]
 
 
-async def to_async_list(sequence: list[T]) -> AsyncIterator[T]:
+async def to_async_iterator(sequence: Iterable[T]) -> AsyncIterator[T]:
     for item in sequence:
         yield item

@@ -16,5 +16,14 @@ class CommandResult(TypedDict):
             error messages for the failed one."""
 
 
+class CommandInvocation(TypedDict):
+    command: str
+    args: list[str]
+
+
 def responses_to_text(responses: List[CommandResult]) -> str:
     return json.dumps({"responses": responses})
+
+
+def commands_to_text(commands: List[CommandInvocation]) -> str:
+    return json.dumps({"commands": commands})

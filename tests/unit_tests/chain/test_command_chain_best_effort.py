@@ -20,7 +20,7 @@ from tests.utils.async_helper import to_async_string, to_async_strings
 
 SYSTEM_MESSAGE = "<system message>"
 USER_MESSAGE = "<user message>"
-ENFORCE_JSON_FORMAT = "**Remember to reply with a JSON with commands**"
+ENFORCE_JSON_FORMAT = "\n\n**Protocol reminder: reply with commands**"
 BEST_EFFORT_ANSWER = "<best effort answer>"
 NO_TOKENS_ERROR = "No tokens left"
 FAILED_PROTOCOL_ERROR = "The next constructed API request is incorrect."
@@ -77,7 +77,7 @@ async def test_model_doesnt_support_protocol():
         call(
             [
                 Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
-                Message.user(f"{USER_MESSAGE}\n{ENFORCE_JSON_FORMAT}"),
+                Message.user(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(
@@ -127,7 +127,7 @@ async def test_model_partially_supports_protocol():
         call(
             [
                 Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
-                Message.user(f"{USER_MESSAGE}\n{ENFORCE_JSON_FORMAT}"),
+                Message.user(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(
@@ -135,7 +135,7 @@ async def test_model_partially_supports_protocol():
                 Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
                 Message.user(USER_MESSAGE),
                 Message.assistant(TEST_COMMAND_REQUEST),
-                Message.user(f"{TEST_COMMAND_RESPONSE}\n{ENFORCE_JSON_FORMAT}"),
+                Message.user(f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(
@@ -181,7 +181,7 @@ async def test_no_tokens_for_tools():
         call(
             [
                 Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
-                Message.user(f"{USER_MESSAGE}\n{ENFORCE_JSON_FORMAT}"),
+                Message.user(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(
@@ -189,7 +189,7 @@ async def test_no_tokens_for_tools():
                 Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
                 Message.user(USER_MESSAGE),
                 Message.assistant(TEST_COMMAND_REQUEST),
-                Message.user(f"{TEST_COMMAND_RESPONSE}\n{ENFORCE_JSON_FORMAT}"),
+                Message.user(f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(

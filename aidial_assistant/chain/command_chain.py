@@ -1,7 +1,7 @@
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Callable, Tuple
+from typing import Any, AsyncIterator, Callable, Tuple, cast
 
 from aidial_sdk.chat_completion.request import Role
 from openai import InvalidRequestError
@@ -11,8 +11,10 @@ from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
 from aidial_assistant.chain.callbacks.command_callback import CommandCallback
 from aidial_assistant.chain.callbacks.result_callback import ResultCallback
 from aidial_assistant.chain.command_result import (
+    CommandInvocation,
     CommandResult,
     Status,
+    commands_to_text,
     responses_to_text,
 )
 from aidial_assistant.chain.dialogue import Dialogue, Exchange
@@ -86,7 +88,7 @@ class CommandChain:
     ):
         dialogue = Dialogue()
         try:
-            messages = history.to_protocol_messages_with_system_message()
+            messages = history.to_protocol_messages()
             while True:
                 exchange = await self._run_with_protocol_failure_retries(
                     callback,
@@ -105,7 +107,7 @@ class CommandChain:
                     dialogue,
                 )
                 if not dialogue.is_empty()
-                else history.to_client_messages()
+                else history.to_user_messages()
             )
             await self._generate_result(messages, callback)
         except (InvalidRequestError, LimitExceededException) as e:
@@ -149,7 +151,7 @@ class CommandChain:
                     )
 
                     if responses:
-                        request_text = json.dumps({"commands": commands})
+                        request_text = commands_to_text(commands)
                         response_text = responses_to_text(responses)
 
                         callback.on_state(request_text, response_text)
@@ -177,7 +179,8 @@ class CommandChain:
                     retries.append(
                         Exchange(
                             assistant_message=chunk_stream.buffer,
-                            user_message=json.dumps({"error": str(e)}),
+                            user_message="Failed to parse JSON commands: "
+                            + str(e),
                         )
                     )
                 finally:
@@ -194,12 +197,12 @@ class CommandChain:
 
     async def _run_commands(
         self, chunk_stream: AsyncIterator[str], callback: ChainCallback
-    ) -> Tuple[list[dict[str, Any]], list[CommandResult]]:
+    ) -> Tuple[list[CommandInvocation], list[CommandResult]]:
         char_stream = CharacterStream(chunk_stream)
         await skip_to_json_start(char_stream)
 
         async with JsonParser.parse(char_stream) as root_node:
-            commands: list[dict[str, Any]] = []
+            commands: list[CommandInvocation] = []
             responses: list[CommandResult] = []
             request_reader = CommandsReader(root_node)
             async for invocation in request_reader.parse_invocations():
@@ -222,7 +225,9 @@ class CommandChain:
                         command_name, command, args, callback
                     )
 
-                    commands.append(invocation.node.value())
+                    commands.append(
+                        cast(CommandInvocation, invocation.node.value())
+                    )
                     responses.append(response)
 
             return commands, responses
