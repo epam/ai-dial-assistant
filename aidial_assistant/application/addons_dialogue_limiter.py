@@ -8,8 +8,8 @@ from aidial_assistant.model.model_client import Message, ModelClient
 
 
 class AddonsDialogueLimiter(ModelRequestLimiter):
-    def __init__(self, max_tokens: int, model_client: ModelClient):
-        self.max_tokens = max_tokens
+    def __init__(self, max_dialogue_tokens: int, model_client: ModelClient):
+        self.max_dialogue_tokens = max_dialogue_tokens
         self.model_client = model_client
 
         self._dialogue_tokens = 0
@@ -28,8 +28,8 @@ class AddonsDialogueLimiter(ModelRequestLimiter):
             - self._initial_tokens
         )
 
-        if self._dialogue_tokens > self.max_tokens:
+        if self._dialogue_tokens > self.max_dialogue_tokens:
             raise LimitExceededException(
-                f"Addons dialogue limit exceeded. Max tokens: {self.max_tokens},"
+                f"Addons dialogue limit exceeded. Max tokens: {self.max_dialogue_tokens},"
                 f" actual tokens: {self._dialogue_tokens}."
             )

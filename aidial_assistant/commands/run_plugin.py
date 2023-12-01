@@ -41,11 +41,11 @@ class RunPlugin(Command):
         self,
         model_client: ModelClient,
         plugins: dict[str, PluginInfo],
-        max_tokens: int,
+        max_completion_tokens: int,
     ):
         self.model_client = model_client
         self.plugins = plugins
-        self.max_tokens = max_tokens
+        self.max_completion_tokens = max_completion_tokens
 
     @staticmethod
     def token():
@@ -101,7 +101,7 @@ class RunPlugin(Command):
             model_client=self.model_client,
             name="PLUGIN:" + name,
             command_dict=command_dict,
-            max_tokens=self.max_tokens,
+            max_completion_tokens=self.max_completion_tokens,
         )
 
         callback = PluginChainCallback(execution_callback)

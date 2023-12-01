@@ -17,7 +17,7 @@ from aidial_assistant.chain.command_result import (
     commands_to_text,
     responses_to_text,
 )
-from aidial_assistant.chain.dialogue import Dialogue, Exchange
+from aidial_assistant.chain.dialogue import Dialogue, DialogueTurn
 from aidial_assistant.chain.history import History
 from aidial_assistant.chain.model_response_reader import (
     AssistantProtocolException,
@@ -61,14 +61,16 @@ class CommandChain:
         name: str,
         model_client: ModelClient,
         command_dict: CommandDict,
-        max_tokens: int | None = None,
+        max_completion_tokens: int | None = None,
         max_retry_count: int = DEFAULT_MAX_RETRY_COUNT,
     ):
         self.name = name
         self.model_client = model_client
         self.command_dict = command_dict
         self.model_extra_args = (
-            {} if max_tokens is None else {"max_tokens": max_tokens}
+            {}
+            if max_completion_tokens is None
+            else {"max_tokens": max_completion_tokens}
         )
         self.max_retry_count = max_retry_count
 
@@ -90,16 +92,16 @@ class CommandChain:
         try:
             messages = history.to_protocol_messages()
             while True:
-                exchange = await self._run_with_protocol_failure_retries(
+                dialogue_turn = await self._run_with_protocol_failure_retries(
                     callback,
                     messages + dialogue.messages,
                     model_request_limiter,
                 )
 
-                if exchange is None:
+                if dialogue_turn is None:
                     break
 
-                dialogue.append(exchange)
+                dialogue.append(dialogue_turn)
         except (JsonParsingException, AssistantProtocolException):
             messages = (
                 history.to_best_effort_messages(
@@ -128,7 +130,7 @@ class CommandChain:
         callback: ChainCallback,
         messages: list[Message],
         model_request_limiter: ModelRequestLimiter | None = None,
-    ) -> Exchange | None:
+    ) -> DialogueTurn | None:
         last_error: Exception | None = None
         try:
             self._log_messages(messages)
@@ -155,7 +157,7 @@ class CommandChain:
                         response_text = responses_to_text(responses)
 
                         callback.on_state(request_text, response_text)
-                        return Exchange(
+                        return DialogueTurn(
                             assistant_message=request_text,
                             user_message=response_text,
                         )
@@ -164,7 +166,7 @@ class CommandChain:
                 except (JsonParsingException, AssistantProtocolException) as e:
                     logger.exception("Failed to process model response")
 
-                    retry_count = retries.exchange_count()
+                    retry_count = retries.dialogue_turn_count()
                     callback.on_error(
                         "Error"
                         if retry_count == 0
@@ -177,7 +179,7 @@ class CommandChain:
 
                     last_error = e
                     retries.append(
-                        Exchange(
+                        DialogueTurn(
                             assistant_message=chunk_stream.buffer,
                             user_message="Failed to parse JSON commands: "
                             + str(e),
