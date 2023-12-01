@@ -1,4 +1,3 @@
-from pydantic import BaseModel
 from typing_extensions import override
 
 from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream

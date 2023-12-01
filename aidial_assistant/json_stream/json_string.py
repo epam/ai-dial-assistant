@@ -5,9 +5,9 @@ from typing_extensions import override
 
 from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
 from aidial_assistant.json_stream.exceptions import (
+    JsonParsingException,
     unexpected_end_of_stream_error,
     unexpected_symbol_error,
-    JsonParsingException,
 )
 from aidial_assistant.json_stream.json_node import CompoundNode
 

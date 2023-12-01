@@ -91,15 +91,15 @@ class JsonObject(CompoundNode[dict[str, Any], Tuple[str, JsonNode]]):
     @override
     async def to_string_chunks(self) -> AsyncIterator[str]:
         yield "{"
-        is_comma_expected = False
+        is_first_entry = True
         async for key, value in self:
-            if is_comma_expected:
+            if not is_first_entry:
                 yield ", "
             yield json.dumps(key)
             yield ": "
             async for chunk in value.to_string_chunks():
                 yield chunk
-            is_comma_expected = True
+            is_first_entry = False
         yield "}"
 
     @override

@@ -178,7 +178,7 @@ async def test_incomplete_json_parsing():
 
 
 @pytest.mark.asyncio
-async def test_incomplete_json_parsing():
+async def test_incorrect_escape_sequence():
     incomplete_json_string = '"\\k"'
     node = string_node(
         await parse_json(
