@@ -1,18 +1,14 @@
+from pydantic import BaseModel
 from typing_extensions import override
 
-from aidial_assistant.json_stream.characterstream import CharacterStream
+from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
 from aidial_assistant.json_stream.exceptions import (
     unexpected_end_of_stream_error,
     unexpected_symbol_error,
 )
 from aidial_assistant.json_stream.json_array import JsonArray
 from aidial_assistant.json_stream.json_bool import JsonBoolean
-from aidial_assistant.json_stream.json_node import (
-    JsonNode,
-    NodeResolver,
-    PrimitiveNode,
-)
-from aidial_assistant.json_stream.json_normalizer import JsonNormalizer
+from aidial_assistant.json_stream.json_node import JsonNode, NodeResolver
 from aidial_assistant.json_stream.json_null import JsonNull
 from aidial_assistant.json_stream.json_number import JsonNumber
 from aidial_assistant.json_stream.json_object import JsonObject
@@ -48,41 +44,32 @@ def string_node(node: JsonNode) -> JsonString:
 
 class RootNodeResolver(NodeResolver):
     @override
-    async def resolve(self, stream: CharacterStream) -> JsonNode:
+    async def resolve(self, stream: ChunkedCharStream) -> JsonNode:
         try:
-            normalised_stream = JsonNormalizer(stream)
-            char = await normalised_stream.apeek()
-            if char == JsonObject.token():
+            char = await (await stream.skip_whitespaces()).apeek()
+            if JsonObject.starts_with(char):
                 return JsonObject.parse(stream, self)
 
-            if char == JsonArray.token():
+            if JsonArray.starts_with(char):
                 return JsonArray.parse(stream, self)
 
-            if char == JsonString.token():
+            if JsonString.starts_with(char):
                 return JsonString.parse(stream)
 
-            if JsonNumber.is_number(char):
-                position = stream.char_position
-                return JsonNumber(await PrimitiveNode.collect(stream), position)
+            if JsonNumber.starts_with(char):
+                return await JsonNumber.parse(stream)
 
-            if JsonNull.is_null(char):
-                position = stream.char_position
-                return JsonNull(await PrimitiveNode.collect(stream), position)
+            if JsonNull.starts_with(char):
+                return await JsonNull.parse(stream)
 
-            if JsonBoolean.is_bool(char):
-                position = stream.char_position
-                return JsonBoolean(
-                    await PrimitiveNode.collect(stream), position
-                )
+            if JsonBoolean.starts_with(char):
+                return await JsonBoolean.parse(stream)
         except StopAsyncIteration:
             raise unexpected_end_of_stream_error(stream.char_position)
 
         raise unexpected_symbol_error(char, stream.char_position)
 
 
-class JsonParser:
-    @staticmethod
-    async def parse(stream: CharacterStream) -> JsonNode:
-        node_resolver = RootNodeResolver()
-
-        return await node_resolver.resolve(stream)
+async def parse_json(stream: ChunkedCharStream) -> JsonNode:
+    node_resolver = RootNodeResolver()
+    return await node_resolver.resolve(stream)

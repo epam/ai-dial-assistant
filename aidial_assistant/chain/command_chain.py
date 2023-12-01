@@ -29,10 +29,10 @@ from aidial_assistant.chain.model_response_reader import (
     skip_to_json_start,
 )
 from aidial_assistant.commands.base import Command, FinalCommand
-from aidial_assistant.json_stream.characterstream import CharacterStream
+from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
 from aidial_assistant.json_stream.exceptions import JsonParsingException
 from aidial_assistant.json_stream.json_node import JsonNode
-from aidial_assistant.json_stream.json_parser import JsonParser
+from aidial_assistant.json_stream.json_parser import parse_json
 from aidial_assistant.json_stream.json_string import JsonString
 from aidial_assistant.utils.stream import CumulativeStream
 
@@ -166,10 +166,10 @@ class CommandChain:
     async def _run_commands(
         self, chunk_stream: AsyncIterator[str], callback: ChainCallback
     ) -> Tuple[list[CommandInvocation], list[CommandResult]]:
-        char_stream = CharacterStream(chunk_stream)
+        char_stream = ChunkedCharStream(chunk_stream)
         await skip_to_json_start(char_stream)
 
-        root_node = await JsonParser.parse(char_stream)
+        root_node = await parse_json(char_stream)
         commands: list[CommandInvocation] = []
         responses: list[CommandResult] = []
         request_reader = CommandsReader(root_node)

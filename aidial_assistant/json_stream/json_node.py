@@ -4,7 +4,7 @@ from typing import Generic, TypeVar
 
 from typing_extensions import override
 
-from aidial_assistant.json_stream.characterstream import CharacterStream
+from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
 from aidial_assistant.json_stream.exceptions import (
     unexpected_end_of_stream_error,
 )
@@ -12,7 +12,7 @@ from aidial_assistant.json_stream.exceptions import (
 
 class NodeResolver(ABC):
     @abstractmethod
-    async def resolve(self, stream: CharacterStream) -> "JsonNode":
+    async def resolve(self, stream: ChunkedCharStream) -> "JsonNode":
         pass
 
 
@@ -41,7 +41,7 @@ class JsonNode(ABC, Generic[TValue]):
         pass
 
 
-class ReadableNode(
+class CompoundNode(
     JsonNode[TValue], AsyncIterator[TElement], ABC, Generic[TValue, TElement]
 ):
     def __init__(self, source: AsyncIterator[TElement], char_position: int):
@@ -68,17 +68,22 @@ class ReadableNode(
             pass
 
 
-class PrimitiveNode(JsonNode[TValue], ABC, Generic[TValue]):
-    @abstractmethod
-    def raw_data(self) -> str:
-        pass
+class AtomicNode(JsonNode[TValue], ABC, Generic[TValue]):
+    def __init__(self, raw_data: str, char_position: int):
+        super().__init__(char_position)
+        self._raw_data = raw_data
 
     @override
     async def to_string_chunks(self) -> AsyncIterator[str]:
-        yield self.raw_data()
+        yield self._raw_data
+
+    @classmethod
+    async def parse(cls, stream: ChunkedCharStream) -> "AtomicNode":
+        position = stream.char_position
+        return cls(await AtomicNode._read_all(stream), position)
 
     @staticmethod
-    async def collect(stream: CharacterStream) -> str:
+    async def _read_all(stream: ChunkedCharStream) -> str:
         try:
             raw_data = ""
             while True:

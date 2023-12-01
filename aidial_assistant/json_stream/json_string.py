@@ -3,15 +3,16 @@ from collections.abc import AsyncIterator
 
 from typing_extensions import override
 
-from aidial_assistant.json_stream.characterstream import CharacterStream
+from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
 from aidial_assistant.json_stream.exceptions import (
     unexpected_end_of_stream_error,
     unexpected_symbol_error,
+    JsonParsingException,
 )
-from aidial_assistant.json_stream.json_node import ReadableNode
+from aidial_assistant.json_stream.json_node import CompoundNode
 
 
-class JsonString(ReadableNode[str, str]):
+class JsonString(CompoundNode[str, str]):
     def __init__(self, source: AsyncIterator[str], char_position: int):
         super().__init__(source, char_position)
         self._buffer = ""
@@ -20,40 +21,36 @@ class JsonString(ReadableNode[str, str]):
     def type(self) -> str:
         return "string"
 
-    @staticmethod
-    def token() -> str:
-        return '"'
-
     @override
     def _accumulate(self, element: str):
         self._buffer += element
 
     @override
     async def to_string_chunks(self) -> AsyncIterator[str]:
-        yield JsonString.token()
+        yield '"'
         async for chunk in self:
             yield json.dumps(chunk)[1:-1]
-        yield JsonString.token()
+        yield '"'
 
     @override
     def value(self) -> str:
         return self._buffer
 
     @classmethod
-    def parse(cls, stream: CharacterStream) -> "JsonString":
+    def parse(cls, stream: ChunkedCharStream) -> "JsonString":
         return cls(JsonString.read(stream), stream.char_position)
 
     @staticmethod
-    async def read(stream: CharacterStream) -> AsyncIterator[str]:
+    async def read(stream: ChunkedCharStream) -> AsyncIterator[str]:
         try:
             char = await anext(stream)
-            if not char == JsonString.token():
+            if not JsonString.starts_with(char):
                 raise unexpected_symbol_error(char, stream.char_position)
             result = ""
             chunk_position = stream.chunk_position
             while True:
                 char = await anext(stream)
-                if char == JsonString.token():
+                if char == '"':
                     break
 
                 result += (
@@ -70,11 +67,11 @@ class JsonString(ReadableNode[str, str]):
             yield result
 
     @staticmethod
-    async def _escape(stream: CharacterStream) -> str:
+    async def _escape(stream: ChunkedCharStream) -> str:
         char = await anext(stream)
         if char == "u":
             unicode_sequence = "".join([await anext(stream) for _ in range(4)])  # type: ignore
-            return str(int(unicode_sequence, 16))
+            return chr(int(unicode_sequence, 16))
         if char in '"\\/':
             return char
         if char == "b":
@@ -88,6 +85,11 @@ class JsonString(ReadableNode[str, str]):
         elif char == "t":
             return "\t"
         else:
-            # Ignore when model cannot escape text properly
-            return char
-            # raise ValueError(f"Unexpected escape sequence: \\{char}" + " at " + str(stream.char_position - 1))
+            raise JsonParsingException(
+                f"Unexpected escape sequence: \\{char}.",
+                stream.char_position - 1,
+            )
+
+    @staticmethod
+    def starts_with(char: str) -> bool:
+        return char == '"'

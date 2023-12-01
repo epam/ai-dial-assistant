@@ -4,10 +4,11 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from aidial_assistant.json_stream.characterstream import CharacterStream
+from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
+from aidial_assistant.json_stream.exceptions import JsonParsingException
 from aidial_assistant.json_stream.json_parser import (
-    JsonParser,
     object_node,
+    parse_json,
     string_node,
 )
 from aidial_assistant.utils.text import join_string
@@ -85,7 +86,7 @@ JSON_STRINGS = [
     """,
     """
     {
-      "text": "Hello, 世界"
+      "text": "Hello, \\u4e16\\u754c"
     }
     """,
     """
@@ -152,9 +153,7 @@ async def _split_into_chunks(json_string: str) -> AsyncIterator[str]:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("json_string", JSON_STRINGS)
 async def test_json_parsing(json_string: str):
-    node = await JsonParser.parse(
-        CharacterStream(_split_into_chunks(json_string))
-    )
+    node = await parse_json(ChunkedCharStream(_split_into_chunks(json_string)))
     actual = await join_string(node.to_string_chunks())
     expected = json.dumps(json.loads(json_string))
 
@@ -168,11 +167,28 @@ async def test_incomplete_json_parsing():
       "test": "field"
     """
     node = object_node(
-        await JsonParser.parse(
-            CharacterStream(_split_into_chunks(incomplete_json_string))
+        await parse_json(
+            ChunkedCharStream(_split_into_chunks(incomplete_json_string))
         )
     )
     _, value = await anext(node)
     await string_node(value).read_to_end()
 
     assert node.value() == {"test": "field"}
+
+
+@pytest.mark.asyncio
+async def test_incomplete_json_parsing():
+    incomplete_json_string = '"\\k"'
+    node = string_node(
+        await parse_json(
+            ChunkedCharStream(_split_into_chunks(incomplete_json_string))
+        )
+    )
+
+    with pytest.raises(JsonParsingException) as exc_info:
+        await node.read_to_end()
+
+    assert str(exc_info.value) == (
+        "Failed to parse json string at position 2: Unexpected escape sequence: \\k."
+    )

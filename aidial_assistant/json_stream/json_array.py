@@ -3,20 +3,19 @@ from typing import Any
 
 from typing_extensions import override
 
-from aidial_assistant.json_stream.characterstream import CharacterStream
+from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
 from aidial_assistant.json_stream.exceptions import (
     unexpected_end_of_stream_error,
     unexpected_symbol_error,
 )
 from aidial_assistant.json_stream.json_node import (
+    CompoundNode,
     JsonNode,
     NodeResolver,
-    ReadableNode,
 )
-from aidial_assistant.json_stream.json_normalizer import JsonNormalizer
 
 
-class JsonArray(ReadableNode[list[Any], JsonNode]):
+class JsonArray(CompoundNode[list[Any], JsonNode]):
     def __init__(self, source: AsyncIterator[JsonNode], char_position: int):
         super().__init__(source, char_position)
         self._array: list[JsonNode] = []
@@ -26,54 +25,49 @@ class JsonArray(ReadableNode[list[Any], JsonNode]):
         return "array"
 
     @staticmethod
-    def token() -> str:
-        return "["
-
-    @staticmethod
     async def read(
-        stream: CharacterStream, dependency_resolver: NodeResolver
+        stream: ChunkedCharStream, node_resolver: NodeResolver
     ) -> AsyncIterator[JsonNode]:
         try:
-            normalised_stream = JsonNormalizer(stream)
-            char = await anext(normalised_stream)
-            if not char == JsonArray.token():
+            char = await anext(await stream.skip_whitespaces())
+            if not JsonArray.starts_with(char):
                 raise unexpected_symbol_error(char, stream.char_position)
 
-            separate = False
+            is_comma_expected = False
             while True:
-                char = await normalised_stream.apeek()
+                char = await (await stream.skip_whitespaces()).apeek()
                 if char == "]":
-                    await anext(normalised_stream)
+                    await stream.askip()
                     break
 
                 if char == ",":
-                    if not separate:
+                    if not is_comma_expected:
                         raise unexpected_symbol_error(
                             char, stream.char_position
                         )
 
-                    await anext(normalised_stream)
-                    separate = False
+                    await stream.askip()
+                    is_comma_expected = False
                 else:
-                    value = await dependency_resolver.resolve(stream)
+                    value = await node_resolver.resolve(stream)
                     yield value
 
-                    if isinstance(value, ReadableNode):
+                    if isinstance(value, CompoundNode):
                         await value.read_to_end()
-                    separate = True
+                    is_comma_expected = True
         except StopAsyncIteration:
             raise unexpected_end_of_stream_error(stream.char_position)
 
     @override
     async def to_string_chunks(self) -> AsyncIterator[str]:
-        yield JsonArray.token()
-        separate = False
+        yield "["
+        is_comma_expected = False
         async for value in self:
-            if separate:
+            if is_comma_expected:
                 yield ", "
             async for chunk in value.to_string_chunks():
                 yield chunk
-            separate = True
+            is_comma_expected = True
         yield "]"
 
     @override
@@ -86,8 +80,10 @@ class JsonArray(ReadableNode[list[Any], JsonNode]):
 
     @classmethod
     def parse(
-        cls, stream: CharacterStream, dependency_resolver: NodeResolver
+        cls, stream: ChunkedCharStream, node_resolver: NodeResolver
     ) -> "JsonArray":
-        return cls(
-            JsonArray.read(stream, dependency_resolver), stream.char_position
-        )
+        return cls(JsonArray.read(stream, node_resolver), stream.char_position)
+
+    @staticmethod
+    def starts_with(char: str) -> bool:
+        return char == "["
