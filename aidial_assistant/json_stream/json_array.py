@@ -3,7 +3,10 @@ from typing import Any
 
 from typing_extensions import override
 
-from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
+from aidial_assistant.json_stream.chunked_char_stream import (
+    ChunkedCharStream,
+    skip_whitespaces,
+)
 from aidial_assistant.json_stream.exceptions import (
     unexpected_end_of_stream_error,
     unexpected_symbol_error,
@@ -11,13 +14,13 @@ from aidial_assistant.json_stream.exceptions import (
 from aidial_assistant.json_stream.json_node import (
     CompoundNode,
     JsonNode,
-    NodeResolver,
+    NodeParser,
 )
 
 
 class JsonArray(CompoundNode[list[Any], JsonNode]):
-    def __init__(self, source: AsyncIterator[JsonNode], char_position: int):
-        super().__init__(source, char_position)
+    def __init__(self, source: AsyncIterator[JsonNode], pos: int):
+        super().__init__(source, pos)
         self._array: list[JsonNode] = []
 
     @override
@@ -26,16 +29,18 @@ class JsonArray(CompoundNode[list[Any], JsonNode]):
 
     @staticmethod
     async def read(
-        stream: ChunkedCharStream, node_resolver: NodeResolver
+        stream: ChunkedCharStream, node_parser: NodeParser
     ) -> AsyncIterator[JsonNode]:
         try:
-            char = await anext(await stream.skip_whitespaces())
+            await skip_whitespaces(stream)
+            char = await anext(stream)
             if not JsonArray.starts_with(char):
                 raise unexpected_symbol_error(char, stream.char_position)
 
             is_comma_expected = False
             while True:
-                char = await (await stream.skip_whitespaces()).apeek()
+                await skip_whitespaces(stream)
+                char = await stream.apeek()
                 if char == "]":
                     await stream.askip()
                     break
@@ -49,7 +54,7 @@ class JsonArray(CompoundNode[list[Any], JsonNode]):
                     await stream.askip()
                     is_comma_expected = False
                 else:
-                    value = await node_resolver.resolve(stream)
+                    value = await node_parser.parse(stream)
                     yield value
 
                     if isinstance(value, CompoundNode):
@@ -59,13 +64,13 @@ class JsonArray(CompoundNode[list[Any], JsonNode]):
             raise unexpected_end_of_stream_error(stream.char_position)
 
     @override
-    async def to_string_chunks(self) -> AsyncIterator[str]:
+    async def to_chunks(self) -> AsyncIterator[str]:
         yield "["
         is_first_element = True
         async for value in self:
             if not is_first_element:
                 yield ", "
-            async for chunk in value.to_string_chunks():
+            async for chunk in value.to_chunks():
                 yield chunk
             is_first_element = False
         yield "]"
@@ -80,9 +85,9 @@ class JsonArray(CompoundNode[list[Any], JsonNode]):
 
     @classmethod
     def parse(
-        cls, stream: ChunkedCharStream, node_resolver: NodeResolver
+        cls, stream: ChunkedCharStream, node_parser: NodeParser
     ) -> "JsonArray":
-        return cls(JsonArray.read(stream, node_resolver), stream.char_position)
+        return cls(JsonArray.read(stream, node_parser), stream.char_position)
 
     @staticmethod
     def starts_with(char: str) -> bool:

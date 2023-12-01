@@ -8,9 +8,9 @@ FALSE_STRING = "false"
 
 
 class JsonBoolean(AtomicNode[bool]):
-    def __init__(self, raw_data: str, char_position: int):
-        super().__init__(raw_data, char_position)
-        self._value: bool = JsonBoolean._parse_boolean(raw_data, char_position)
+    def __init__(self, raw_data: str, pos: int):
+        super().__init__(raw_data, pos)
+        self._value: bool = JsonBoolean._parse_boolean(raw_data, pos)
 
     @override
     def type(self) -> str:

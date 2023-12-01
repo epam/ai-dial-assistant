@@ -32,7 +32,7 @@ from aidial_assistant.commands.base import Command, FinalCommand
 from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
 from aidial_assistant.json_stream.exceptions import JsonParsingException
 from aidial_assistant.json_stream.json_node import JsonNode
-from aidial_assistant.json_stream.json_parser import parse_json
+from aidial_assistant.json_stream.json_parser import JsonParser
 from aidial_assistant.json_stream.json_string import JsonString
 from aidial_assistant.utils.stream import CumulativeStream
 
@@ -169,7 +169,7 @@ class CommandChain:
         char_stream = ChunkedCharStream(chunk_stream)
         await skip_to_json_start(char_stream)
 
-        root_node = await parse_json(char_stream)
+        root_node = await JsonParser().parse(char_stream)
         commands: list[CommandInvocation] = []
         responses: list[CommandResult] = []
         request_reader = CommandsReader(root_node)
@@ -184,7 +184,7 @@ class CommandChain:
                 await CommandChain._to_result(
                     message
                     if isinstance(message, JsonString)
-                    else message.to_string_chunks(),
+                    else message.to_chunks(),
                     callback.result_callback(),
                 )
                 break
@@ -237,7 +237,7 @@ class CommandChain:
             arg_callback = args_callback.arg_callback()
             arg_callback.on_arg_start()
             result = ""
-            async for chunk in arg.to_string_chunks():
+            async for chunk in arg.to_chunks():
                 arg_callback.on_arg(chunk)
                 result += chunk
             arg_callback.on_arg_end()

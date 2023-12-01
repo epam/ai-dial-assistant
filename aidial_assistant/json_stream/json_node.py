@@ -10,9 +10,9 @@ from aidial_assistant.json_stream.exceptions import (
 )
 
 
-class NodeResolver(ABC):
+class NodeParser(ABC):
     @abstractmethod
-    async def resolve(self, stream: ChunkedCharStream) -> "JsonNode":
+    async def parse(self, stream: ChunkedCharStream) -> "JsonNode":
         pass
 
 
@@ -21,20 +21,20 @@ TElement = TypeVar("TElement")
 
 
 class JsonNode(ABC, Generic[TValue]):
-    def __init__(self, char_position: int):
-        self._char_position = char_position
+    def __init__(self, pos: int):
+        self._pos = pos
 
     @abstractmethod
     def type(self) -> str:
         pass
 
     @abstractmethod
-    def to_string_chunks(self) -> AsyncIterator[str]:
+    def to_chunks(self) -> AsyncIterator[str]:
         pass
 
     @property
-    def char_position(self) -> int:
-        return self._char_position
+    def pos(self) -> int:
+        return self._pos
 
     @abstractmethod
     def value(self) -> TValue:
@@ -44,8 +44,8 @@ class JsonNode(ABC, Generic[TValue]):
 class CompoundNode(
     JsonNode[TValue], AsyncIterator[TElement], ABC, Generic[TValue, TElement]
 ):
-    def __init__(self, source: AsyncIterator[TElement], char_position: int):
-        super().__init__(char_position)
+    def __init__(self, source: AsyncIterator[TElement], pos: int):
+        super().__init__(pos)
         self._source = source
 
     @override
@@ -69,12 +69,12 @@ class CompoundNode(
 
 
 class AtomicNode(JsonNode[TValue], ABC, Generic[TValue]):
-    def __init__(self, raw_data: str, char_position: int):
-        super().__init__(char_position)
+    def __init__(self, raw_data: str, pos: int):
+        super().__init__(pos)
         self._raw_data = raw_data
 
     @override
-    async def to_string_chunks(self) -> AsyncIterator[str]:
+    async def to_chunks(self) -> AsyncIterator[str]:
         yield self._raw_data
 
     @classmethod

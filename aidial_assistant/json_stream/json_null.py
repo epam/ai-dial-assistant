@@ -7,10 +7,10 @@ NULL_STRING = "null"
 
 
 class JsonNull(AtomicNode[None]):
-    def __init__(self, raw_data: str, char_position: int):
-        super().__init__(raw_data, char_position)
+    def __init__(self, raw_data: str, pos: int):
+        super().__init__(raw_data, pos)
         if raw_data != NULL_STRING:
-            raise invalid_sequence_error(raw_data, char_position)
+            raise invalid_sequence_error(raw_data, pos)
 
     @override
     def type(self) -> str:

@@ -31,15 +31,6 @@ class ChunkedCharStream(ABC, AsyncIterator[str]):
     async def askip(self):
         await anext(self)
 
-    async def skip_whitespaces(self) -> "ChunkedCharStream":
-        while True:
-            char = await self.apeek()
-            if not str.isspace(char):
-                break
-            await self.askip()
-
-        return self
-
     @property
     def chunk_position(self) -> int:
         return self._chunk_position
@@ -47,3 +38,12 @@ class ChunkedCharStream(ABC, AsyncIterator[str]):
     @property
     def char_position(self) -> int:
         return self._chunk_position + self._next_char_offset
+
+
+async def skip_whitespaces(stream: ChunkedCharStream):
+    while True:
+        char = await stream.apeek()
+        if not str.isspace(char):
+            break
+
+        await stream.askip()

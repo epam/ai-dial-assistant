@@ -4,7 +4,10 @@ from typing import Any, Tuple
 
 from typing_extensions import override
 
-from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
+from aidial_assistant.json_stream.chunked_char_stream import (
+    ChunkedCharStream,
+    skip_whitespaces,
+)
 from aidial_assistant.json_stream.exceptions import (
     unexpected_end_of_stream_error,
     unexpected_symbol_error,
@@ -12,17 +15,15 @@ from aidial_assistant.json_stream.exceptions import (
 from aidial_assistant.json_stream.json_node import (
     CompoundNode,
     JsonNode,
-    NodeResolver,
+    NodeParser,
 )
 from aidial_assistant.json_stream.json_string import JsonString
 from aidial_assistant.utils.text import join_string
 
 
 class JsonObject(CompoundNode[dict[str, Any], Tuple[str, JsonNode]]):
-    def __init__(
-        self, source: AsyncIterator[Tuple[str, JsonNode]], char_position: int
-    ):
-        super().__init__(source, char_position)
+    def __init__(self, source: AsyncIterator[Tuple[str, JsonNode]], pos: int):
+        super().__init__(source, pos)
         self._object = {}
 
     @override
@@ -41,16 +42,18 @@ class JsonObject(CompoundNode[dict[str, Any], Tuple[str, JsonNode]]):
 
     @staticmethod
     async def read(
-        stream: ChunkedCharStream, node_resolver: NodeResolver
+        stream: ChunkedCharStream, node_parser: NodeParser
     ) -> AsyncIterator[Tuple[str, JsonNode]]:
         try:
-            char = await anext(await stream.skip_whitespaces())
+            await skip_whitespaces(stream)
+            char = await anext(stream)
             if not JsonObject.starts_with(char):
                 raise unexpected_symbol_error(char, stream.char_position)
 
             is_comma_expected = False
             while True:
-                char = await (await stream.skip_whitespaces()).apeek()
+                await skip_whitespaces(stream)
+                char = await stream.apeek()
 
                 if char == "}":
                     await stream.askip()
@@ -71,13 +74,14 @@ class JsonObject(CompoundNode[dict[str, Any], Tuple[str, JsonNode]]):
                         )
 
                     key = await join_string(JsonString.read(stream))
-                    colon = await anext((await stream.skip_whitespaces()))
+                    await skip_whitespaces(stream)
+                    colon = await anext(stream)
                     if not colon == ":":
                         raise unexpected_symbol_error(
                             colon, stream.char_position
                         )
 
-                    value = await node_resolver.resolve(stream)
+                    value = await node_parser.parse(stream)
                     yield key, value
 
                     if isinstance(value, CompoundNode):
@@ -89,7 +93,7 @@ class JsonObject(CompoundNode[dict[str, Any], Tuple[str, JsonNode]]):
             raise unexpected_end_of_stream_error(stream.char_position)
 
     @override
-    async def to_string_chunks(self) -> AsyncIterator[str]:
+    async def to_chunks(self) -> AsyncIterator[str]:
         yield "{"
         is_first_entry = True
         async for key, value in self:
@@ -97,7 +101,7 @@ class JsonObject(CompoundNode[dict[str, Any], Tuple[str, JsonNode]]):
                 yield ", "
             yield json.dumps(key)
             yield ": "
-            async for chunk in value.to_string_chunks():
+            async for chunk in value.to_chunks():
                 yield chunk
             is_first_entry = False
         yield "}"
@@ -112,9 +116,9 @@ class JsonObject(CompoundNode[dict[str, Any], Tuple[str, JsonNode]]):
 
     @classmethod
     def parse(
-        cls, stream: ChunkedCharStream, node_resolver: NodeResolver
+        cls, stream: ChunkedCharStream, node_parser: NodeParser
     ) -> "JsonObject":
-        return cls(JsonObject.read(stream, node_resolver), stream.char_position)
+        return cls(JsonObject.read(stream, node_parser), stream.char_position)
 
     @staticmethod
     def starts_with(char: str) -> bool:

@@ -13,8 +13,8 @@ from aidial_assistant.json_stream.json_node import CompoundNode
 
 
 class JsonString(CompoundNode[str, str]):
-    def __init__(self, source: AsyncIterator[str], char_position: int):
-        super().__init__(source, char_position)
+    def __init__(self, source: AsyncIterator[str], pos: int):
+        super().__init__(source, pos)
         self._buffer = ""
 
     @override
@@ -26,7 +26,7 @@ class JsonString(CompoundNode[str, str]):
         self._buffer += element
 
     @override
-    async def to_string_chunks(self) -> AsyncIterator[str]:
+    async def to_chunks(self) -> AsyncIterator[str]:
         yield '"'
         async for chunk in self:
             yield json.dumps(chunk)[1:-1]

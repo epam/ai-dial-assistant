@@ -7,8 +7,8 @@ import pytest
 from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
 from aidial_assistant.json_stream.exceptions import JsonParsingException
 from aidial_assistant.json_stream.json_parser import (
+    JsonParser,
     object_node,
-    parse_json,
     string_node,
 )
 from aidial_assistant.utils.text import join_string
@@ -153,8 +153,10 @@ async def _split_into_chunks(json_string: str) -> AsyncIterator[str]:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("json_string", JSON_STRINGS)
 async def test_json_parsing(json_string: str):
-    node = await parse_json(ChunkedCharStream(_split_into_chunks(json_string)))
-    actual = await join_string(node.to_string_chunks())
+    node = await JsonParser().parse(
+        ChunkedCharStream(_split_into_chunks(json_string))
+    )
+    actual = await join_string(node.to_chunks())
     expected = json.dumps(json.loads(json_string))
 
     assert actual == expected
@@ -167,7 +169,7 @@ async def test_incomplete_json_parsing():
       "test": "field"
     """
     node = object_node(
-        await parse_json(
+        await JsonParser().parse(
             ChunkedCharStream(_split_into_chunks(incomplete_json_string))
         )
     )
@@ -181,7 +183,7 @@ async def test_incomplete_json_parsing():
 async def test_incorrect_escape_sequence():
     incomplete_json_string = '"\\k"'
     node = string_node(
-        await parse_json(
+        await JsonParser().parse(
             ChunkedCharStream(_split_into_chunks(incomplete_json_string))
         )
     )
