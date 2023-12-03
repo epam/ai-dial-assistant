@@ -8,7 +8,7 @@ class JsonParsingException(Exception):
 def unexpected_symbol_error(
     char: str, char_position: int
 ) -> JsonParsingException:
-    return JsonParsingException(f"Unexpected symbol {char}.", char_position)
+    return JsonParsingException(f"Unexpected symbol '{char}'.", char_position)
 
 
 def unexpected_end_of_stream_error(char_position: int) -> JsonParsingException:
@@ -16,6 +16,9 @@ def unexpected_end_of_stream_error(char_position: int) -> JsonParsingException:
 
 
 def invalid_sequence_error(
-    sequence: str, char_position: int
+    expected_type: str, string: str, char_position: int
 ) -> JsonParsingException:
-    return JsonParsingException(f"Invalid sequence {sequence}.", char_position)
+    return JsonParsingException(
+        f"Can't parse {expected_type} from the string '{string}'.",
+        char_position,
+    )

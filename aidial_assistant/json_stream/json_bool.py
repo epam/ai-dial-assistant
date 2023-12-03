@@ -5,6 +5,7 @@ from aidial_assistant.json_stream.json_node import AtomicNode
 
 TRUE_STRING = "true"
 FALSE_STRING = "false"
+TYPE_STRING = "boolean"
 
 
 class JsonBoolean(AtomicNode[bool]):
@@ -14,7 +15,7 @@ class JsonBoolean(AtomicNode[bool]):
 
     @override
     def type(self) -> str:
-        return "boolean"
+        return TYPE_STRING
 
     @override
     def value(self) -> bool:
@@ -32,4 +33,4 @@ class JsonBoolean(AtomicNode[bool]):
         if string == FALSE_STRING:
             return False
 
-        raise invalid_sequence_error(string, char_position)
+        raise invalid_sequence_error(TYPE_STRING, string, char_position)

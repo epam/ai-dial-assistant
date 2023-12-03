@@ -20,7 +20,7 @@ from aidial_assistant.json_stream.json_string import JsonString
 def array_node(node: JsonNode) -> JsonArray:
     if not isinstance(node, JsonArray):
         raise TypeError(
-            f"Expected json array at position {node.pos}, got {node.type}"
+            f"Expected json array at position {node.pos}, got {node.type()}"
         )
 
     return node
@@ -29,7 +29,7 @@ def array_node(node: JsonNode) -> JsonArray:
 def object_node(node: JsonNode) -> JsonObject:
     if not isinstance(node, JsonObject):
         raise TypeError(
-            f"Expected json object at position {node.pos}, got {node.type}"
+            f"Expected json object at position {node.pos}, got {node.type()}"
         )
 
     return node
@@ -38,7 +38,7 @@ def object_node(node: JsonNode) -> JsonObject:
 def string_node(node: JsonNode) -> JsonString:
     if not isinstance(node, JsonString):
         raise TypeError(
-            f"Expected json string at position {node.pos}, got {node.type}"
+            f"Expected json string at position {node.pos}, got {node.type()}"
         )
 
     return node

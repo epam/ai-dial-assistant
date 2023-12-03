@@ -5,6 +5,8 @@ from typing_extensions import override
 from aidial_assistant.json_stream.exceptions import invalid_sequence_error
 from aidial_assistant.json_stream.json_node import AtomicNode
 
+TYPE_STRING = "number"
+
 
 class JsonNumber(AtomicNode[float | int]):
     def __init__(self, raw_data: str, pos: int):
@@ -13,7 +15,7 @@ class JsonNumber(AtomicNode[float | int]):
 
     @override
     def type(self) -> str:
-        return "number"
+        return TYPE_STRING
 
     @override
     def value(self) -> float | int:
@@ -28,4 +30,4 @@ class JsonNumber(AtomicNode[float | int]):
         try:
             return json.loads(string)
         except json.JSONDecodeError:
-            raise invalid_sequence_error(string, char_position)
+            raise invalid_sequence_error(TYPE_STRING, string, char_position)
