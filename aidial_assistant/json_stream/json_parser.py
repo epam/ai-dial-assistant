@@ -1,20 +1,26 @@
-from asyncio import TaskGroup
-from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator
+from typing_extensions import override
 
-from aidial_assistant.json_stream.characterstream import CharacterStream
-from aidial_assistant.json_stream.exceptions import JsonParsingException
+from aidial_assistant.json_stream.chunked_char_stream import (
+    ChunkedCharStream,
+    skip_whitespaces,
+)
+from aidial_assistant.json_stream.exceptions import (
+    unexpected_end_of_stream_error,
+    unexpected_symbol_error,
+)
 from aidial_assistant.json_stream.json_array import JsonArray
-from aidial_assistant.json_stream.json_node import ComplexNode, JsonNode
+from aidial_assistant.json_stream.json_bool import JsonBoolean
+from aidial_assistant.json_stream.json_node import JsonNode, NodeParser
+from aidial_assistant.json_stream.json_null import JsonNull
+from aidial_assistant.json_stream.json_number import JsonNumber
 from aidial_assistant.json_stream.json_object import JsonObject
-from aidial_assistant.json_stream.json_root import JsonRoot, RootNodeResolver
 from aidial_assistant.json_stream.json_string import JsonString
 
 
 def array_node(node: JsonNode) -> JsonArray:
     if not isinstance(node, JsonArray):
         raise TypeError(
-            f"Expected json array at position {node.char_position}, got {node.type}"
+            f"Expected json array at position {node.pos}, got {node.type()}"
         )
 
     return node
@@ -23,7 +29,7 @@ def array_node(node: JsonNode) -> JsonArray:
 def object_node(node: JsonNode) -> JsonObject:
     if not isinstance(node, JsonObject):
         raise TypeError(
-            f"Expected json object at position {node.char_position}, got {node.type}"
+            f"Expected json object at position {node.pos}, got {node.type()}"
         )
 
     return node
@@ -32,40 +38,36 @@ def object_node(node: JsonNode) -> JsonObject:
 def string_node(node: JsonNode) -> JsonString:
     if not isinstance(node, JsonString):
         raise TypeError(
-            f"Expected json string at position {node.char_position}, got {node.type}"
+            f"Expected json string at position {node.pos}, got {node.type()}"
         )
 
     return node
 
 
-class JsonParser:
-    @staticmethod
-    @asynccontextmanager
-    async def parse(stream: CharacterStream) -> AsyncGenerator[JsonNode, Any]:
-        root = JsonRoot()
+class JsonParser(NodeParser):
+    @override
+    async def parse(self, stream: ChunkedCharStream) -> JsonNode:
         try:
-            async with TaskGroup() as tg:
-                task = tg.create_task(JsonParser._parse_root(root, stream))
-                try:
-                    yield await root.node()
-                finally:
-                    await task
-        except ExceptionGroup as e:
-            raise e.exceptions[0]
+            await skip_whitespaces(stream)
+            char = await stream.apeek()
+            if JsonObject.starts_with(char):
+                return JsonObject.parse(stream, self)
 
-    @staticmethod
-    async def _parse_root(root: JsonRoot, stream: CharacterStream):
-        try:
-            node_resolver = RootNodeResolver()
-            await root.parse(stream, node_resolver)
-            node = await root.node()
-            if isinstance(node, ComplexNode):
-                await node.parse(stream, node_resolver)
+            if JsonArray.starts_with(char):
+                return JsonArray.parse(stream, self)
+
+            if JsonString.starts_with(char):
+                return JsonString.parse(stream)
+
+            if JsonNumber.starts_with(char):
+                return await JsonNumber.parse(stream)
+
+            if JsonNull.starts_with(char):
+                return await JsonNull.parse(stream)
+
+            if JsonBoolean.starts_with(char):
+                return await JsonBoolean.parse(stream)
         except StopAsyncIteration:
-            raise JsonParsingException(
-                "Failed to parse json: unexpected end of stream."
-            )
-        finally:
-            # flush the stream
-            async for _ in stream:
-                pass
+            raise unexpected_end_of_stream_error(stream.char_position)
+
+        raise unexpected_symbol_error(char, stream.char_position)
