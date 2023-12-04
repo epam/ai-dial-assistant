@@ -1,22 +1,10 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from collections.abc import AsyncIterator
-from typing import Generic, TypeVar
 
 from typing_extensions import override
 
-T = TypeVar("T")
 
-
-class AsyncPeekable(ABC, Generic[T], AsyncIterator[T]):
-    @abstractmethod
-    async def apeek(self) -> T:
-        pass
-
-    async def askip(self) -> None:
-        await anext(self)
-
-
-class CharacterStream(AsyncPeekable[str]):
+class ChunkedCharStream(ABC, AsyncIterator[str]):
     def __init__(self, source: AsyncIterator[str]):
         self._source = source
         self._chunk: str = ""
@@ -33,13 +21,15 @@ class CharacterStream(AsyncPeekable[str]):
         self._next_char_offset += 1
         return result
 
-    @override
     async def apeek(self) -> str:
         while self._next_char_offset == len(self._chunk):
             self._chunk_position += len(self._chunk)
             self._chunk = await anext(self._source)  # type: ignore
             self._next_char_offset = 0
         return self._chunk[self._next_char_offset]
+
+    async def askip(self):
+        await anext(self)
 
     @property
     def chunk_position(self) -> int:
@@ -48,3 +38,12 @@ class CharacterStream(AsyncPeekable[str]):
     @property
     def char_position(self) -> int:
         return self._chunk_position + self._next_char_offset
+
+
+async def skip_whitespaces(stream: ChunkedCharStream):
+    while True:
+        char = await stream.apeek()
+        if not str.isspace(char):
+            break
+
+        await stream.askip()

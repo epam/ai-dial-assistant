@@ -25,7 +25,7 @@ from aidial_assistant.chain.model_response_reader import (
     skip_to_json_start,
 )
 from aidial_assistant.commands.base import Command, FinalCommand
-from aidial_assistant.json_stream.characterstream import CharacterStream
+from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
 from aidial_assistant.json_stream.exceptions import JsonParsingException
 from aidial_assistant.json_stream.json_node import JsonNode
 from aidial_assistant.json_stream.json_parser import JsonParser
@@ -200,39 +200,39 @@ class CommandChain:
     async def _run_commands(
         self, chunk_stream: AsyncIterator[str], callback: ChainCallback
     ) -> Tuple[list[CommandInvocation], list[CommandResult]]:
-        char_stream = CharacterStream(chunk_stream)
+        char_stream = ChunkedCharStream(chunk_stream)
         await skip_to_json_start(char_stream)
 
-        async with JsonParser.parse(char_stream) as root_node:
-            commands: list[CommandInvocation] = []
-            responses: list[CommandResult] = []
-            request_reader = CommandsReader(root_node)
-            async for invocation in request_reader.parse_invocations():
-                command_name = await invocation.parse_name()
-                command = self._create_command(command_name)
-                args = invocation.parse_args()
-                if isinstance(command, FinalCommand):
-                    if len(responses) > 0:
-                        continue
-                    message = await anext(args)
-                    await CommandChain._to_result(
-                        message
-                        if isinstance(message, JsonString)
-                        else message.to_string_chunks(),
-                        callback.result_callback(),
-                    )
-                    break
-                else:
-                    response = await CommandChain._execute_command(
-                        command_name, command, args, callback
-                    )
+        root_node = await JsonParser().parse(char_stream)
+        commands: list[CommandInvocation] = []
+        responses: list[CommandResult] = []
+        request_reader = CommandsReader(root_node)
+        async for invocation in request_reader.parse_invocations():
+            command_name = await invocation.parse_name()
+            command = self._create_command(command_name)
+            args = invocation.parse_args()
+            if isinstance(command, FinalCommand):
+                if len(responses) > 0:
+                    continue
+                message = await anext(args)
+                await CommandChain._to_result(
+                    message
+                    if isinstance(message, JsonString)
+                    else message.to_chunks(),
+                    callback.result_callback(),
+                )
+                break
+            else:
+                response = await CommandChain._execute_command(
+                    command_name, command, args, callback
+                )
 
-                    commands.append(
-                        cast(CommandInvocation, invocation.node.value())
-                    )
-                    responses.append(response)
+                commands.append(
+                    cast(CommandInvocation, invocation.node.value())
+                )
+                responses.append(response)
 
-            return commands, responses
+        return commands, responses
 
     def _create_command(self, name: str) -> Command:
         if name not in self.command_dict:
@@ -271,7 +271,7 @@ class CommandChain:
             arg_callback = args_callback.arg_callback()
             arg_callback.on_arg_start()
             result = ""
-            async for chunk in arg.to_string_chunks():
+            async for chunk in arg.to_chunks():
                 arg_callback.on_arg(chunk)
                 result += chunk
             arg_callback.on_arg_end()
