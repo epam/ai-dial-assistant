@@ -1,23 +1,19 @@
 from typing_extensions import override
 
-from aidial_assistant.json_stream.exceptions import unexpected_symbol_error
-from aidial_assistant.json_stream.json_node import PrimitiveNode
+from aidial_assistant.json_stream.exceptions import invalid_sequence_error
+from aidial_assistant.json_stream.json_node import AtomicNode
 
 NULL_STRING = "null"
 
 
-class JsonNull(PrimitiveNode[None]):
-    def __init__(self, raw_data: str, char_position: int):
-        super().__init__(char_position)
-        if raw_data != "null":
-            raise unexpected_symbol_error(raw_data, char_position)
+class JsonNull(AtomicNode[None]):
+    def __init__(self, raw_data: str, pos: int):
+        super().__init__(raw_data, pos)
+        if raw_data != NULL_STRING:
+            raise invalid_sequence_error(NULL_STRING, raw_data, pos)
 
     @override
     def type(self) -> str:
-        return "null"
-
-    @override
-    def raw_data(self) -> str:
         return NULL_STRING
 
     @override
@@ -25,5 +21,5 @@ class JsonNull(PrimitiveNode[None]):
         return None
 
     @staticmethod
-    def is_null(char: str) -> bool:
+    def starts_with(char: str) -> bool:
         return char == "n"

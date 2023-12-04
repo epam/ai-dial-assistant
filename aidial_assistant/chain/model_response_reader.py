@@ -1,6 +1,6 @@
 from collections.abc import AsyncIterator
 
-from aidial_assistant.json_stream.characterstream import AsyncPeekable
+from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
 from aidial_assistant.json_stream.json_array import JsonArray
 from aidial_assistant.json_stream.json_node import JsonNode
 from aidial_assistant.json_stream.json_object import JsonObject
@@ -16,12 +16,12 @@ class AssistantProtocolException(Exception):
     pass
 
 
-async def skip_to_json_start(stream: AsyncPeekable[str]):
+async def skip_to_json_start(stream: ChunkedCharStream):
     # Some models tend to provide explanations for their replies regardless of what the prompt says.
     try:
         while True:
             char = await stream.apeek()
-            if char == JsonObject.token():
+            if JsonObject.starts_with(char):
                 break
 
             await anext(stream)
