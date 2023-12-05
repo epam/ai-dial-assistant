@@ -59,18 +59,39 @@ class History:
         )
 
     def to_protocol_messages(self) -> list[Message]:
-        messages = self._format_assistant_commands()
-        if messages[0].role == Role.SYSTEM:
-            messages[0] = Message.system(
-                self.assistant_system_message_template.render(
-                    system_prefix=messages[0].content
+        messages: list[Message] = []
+        for index, scoped_message in enumerate(self.scoped_messages):
+            message = scoped_message.message
+            scope = scoped_message.scope
+
+            if index == 0:
+                if message.role == Role.SYSTEM:
+                    messages.append(
+                        Message.system(
+                            self.assistant_system_message_template.render(
+                                system_prefix=message.content
+                            )
+                        )
+                    )
+                else:
+                    messages.append(
+                        Message.system(
+                            self.assistant_system_message_template.render()
+                        )
+                    )
+                    messages.append(message)
+            elif scope == MessageScope.USER and message.role == Role.ASSISTANT:
+                # Clients see replies in plain text, but the model should understand how to reply appropriately.
+                content = commands_to_text(
+                    [
+                        CommandInvocation(
+                            command=Reply.token(), args=[message.content]
+                        )
+                    ]
                 )
-            )
-        else:
-            messages.insert(
-                0,
-                Message.system(self.assistant_system_message_template.render()),
-            )
+                messages.append(Message.assistant(content=content))
+            else:
+                messages.append(message)
 
         return messages
 
@@ -102,8 +123,6 @@ class History:
         self, max_prompt_tokens: int, model_client: ModelClient
     ) -> "History":
         discarded_messages = await model_client.get_discarded_messages(
-            # It is not expected for the user to include the assistant system message overhead
-            # in the max_prompt_tokens parameter, as it is unknown to the user.
             self.to_protocol_messages(),
             max_prompt_tokens,
         )
@@ -120,28 +139,6 @@ class History:
     @property
     def user_message_count(self) -> int:
         return self._user_message_count
-
-    def _format_assistant_commands(self) -> list[Message]:
-        messages: list[Message] = []
-        for scoped_message in self.scoped_messages:
-            message = scoped_message.message
-            if (
-                scoped_message.scope == MessageScope.USER
-                and message.role == Role.ASSISTANT
-            ):
-                # Clients see replies in plain text, but the model should understand how to reply appropriately.
-                content = commands_to_text(
-                    [
-                        CommandInvocation(
-                            command=Reply.token(), args=[message.content]
-                        )
-                    ]
-                )
-                messages.append(Message.assistant(content=content))
-            else:
-                messages.append(message)
-
-        return messages
 
     def _skip_messages(self, discarded_messages: int) -> list[ScopedMessage]:
         messages: list[ScopedMessage] = []

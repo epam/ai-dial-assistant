@@ -153,6 +153,7 @@ class AssistantApplication(ChatCompletion):
             history = await history.truncate(request.max_prompt_tokens, model)
             truncated_size = history.user_message_count
             discarded_messages = original_size - truncated_size
+        # TODO: else compare the history size to the max prompt tokens of the underlying model
 
         choice = response.create_single_choice()
         choice.open()
