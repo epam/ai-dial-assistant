@@ -3,7 +3,7 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from aidial_assistant.chain.model_client import (
+from aidial_assistant.model.model_client import (
     ExtraResultsCallback,
     Message,
     ModelClient,
@@ -76,8 +76,8 @@ async def test_reason_length_with_usage(api):
         async for chunk in model_client.agenerate([]):
             assert chunk == "text"
 
-    assert model_client.prompt_tokens == 1
-    assert model_client.completion_tokens == 2
+    assert model_client.total_prompt_tokens == 1
+    assert model_client.total_completion_tokens == 2
 
 
 @mock.patch(API_METHOD)
