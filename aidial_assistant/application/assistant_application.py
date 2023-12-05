@@ -1,13 +1,11 @@
 import logging
 from pathlib import Path
 
-from aidial_sdk import HTTPException
 from aidial_sdk.chat_completion import FinishReason
 from aidial_sdk.chat_completion.base import ChatCompletion
-from aidial_sdk.chat_completion.request import Addon, Request
+from aidial_sdk.chat_completion.request import Addon, Message, Request, Role
 from aidial_sdk.chat_completion.response import Response
 from aiohttp import hdrs
-from openai import InvalidRequestError, OpenAIError
 
 from aidial_assistant.application.args import parse_args
 from aidial_assistant.application.assistant_callback import (
@@ -22,21 +20,24 @@ from aidial_assistant.chain.history import History
 from aidial_assistant.chain.model_client import (
     ModelClient,
     ReasonLengthException,
-    UsagePublisher,
 )
 from aidial_assistant.commands.reply import Reply
 from aidial_assistant.commands.run_plugin import PluginInfo, RunPlugin
+from aidial_assistant.utils.exceptions import (
+    RequestParameterValidationError,
+    unhandled_exception_handler,
+)
 from aidial_assistant.utils.open_ai_plugin import (
     AddonTokenSource,
     get_open_ai_plugin_info,
     get_plugin_auth,
 )
-from aidial_assistant.utils.state import parse_history
+from aidial_assistant.utils.state import State, parse_history
 
 logger = logging.getLogger(__name__)
 
 
-def get_request_args(request: Request) -> dict[str, str]:
+def _get_request_args(request: Request) -> dict[str, str]:
     args = {
         "model": request.model,
         "temperature": request.temperature,
@@ -51,21 +52,43 @@ def get_request_args(request: Request) -> dict[str, str]:
     return {k: v for k, v in args.items() if v is not None}
 
 
-def _extract_addon_url(addon: Addon) -> str:
-    if addon.url is None:
-        raise InvalidRequestError("Missing required addon url.", param="")
+def _validate_addons(addons: list[Addon] | None):
+    if addons and any(addon.url is None for addon in addons):
+        for index, addon in enumerate(addons):
+            if addon.url is None:
+                raise RequestParameterValidationError(
+                    f"Missing required addon url at index {index}.",
+                    param="addons",
+                )
 
-    return addon.url
+
+def _validate_messages(messages: list[Message]) -> None:
+    if not messages:
+        raise RequestParameterValidationError(
+            "Message list cannot be empty.", param="messages"
+        )
+
+    if messages[-1].role != Role.USER:
+        raise RequestParameterValidationError(
+            "Last message must be from the user.", param="messages"
+        )
+
+
+def _validate_request(request: Request) -> None:
+    _validate_messages(request.messages)
+    _validate_addons(request.addons)
 
 
 class AssistantApplication(ChatCompletion):
     def __init__(self, config_dir: Path):
         self.args = parse_args(config_dir)
 
+    @unhandled_exception_handler
     async def chat_completion(
         self, request: Request, response: Response
     ) -> None:
-        chat_args = self.args.openai_conf.dict() | get_request_args(request)
+        _validate_request(request)
+        chat_args = self.args.openai_conf.dict() | _get_request_args(request)
 
         model = ModelClient(
             model_args=chat_args
@@ -77,10 +100,8 @@ class AssistantApplication(ChatCompletion):
             buffer_size=self.args.chat_conf.buffer_size,
         )
 
-        addons = (
-            [_extract_addon_url(addon) for addon in request.addons]
-            if request.addons
-            else []
+        addons: list[str] = (
+            [addon.url for addon in request.addons] if request.addons else []  # type: ignore
         )
         token_source = AddonTokenSource(request.headers, addons)
 
@@ -103,16 +124,12 @@ class AssistantApplication(ChatCompletion):
                 or info.ai_plugin.description_for_human
             )
 
-        usage_publisher = UsagePublisher()
         command_dict: CommandDict = {
-            RunPlugin.token(): lambda: RunPlugin(model, tools, usage_publisher),
+            RunPlugin.token(): lambda: RunPlugin(model, tools),
             Reply.token(): Reply,
         }
         chain = CommandChain(
-            model_client=model,
-            name="ASSISTANT",
-            command_dict=command_dict,
-            usage_publisher=usage_publisher,
+            model_client=model, name="ASSISTANT", command_dict=command_dict
         )
         history = History(
             assistant_system_message_template=MAIN_SYSTEM_DIALOG_MESSAGE.build(
@@ -123,6 +140,14 @@ class AssistantApplication(ChatCompletion):
             ),
             scoped_messages=parse_history(request.messages),
         )
+        discarded_messages: int | None = None
+        if request.max_prompt_tokens is not None:
+            original_size = history.user_message_count
+            history = await history.truncate(request.max_prompt_tokens, model)
+            truncated_size = history.user_message_count
+            discarded_messages = original_size - truncated_size
+        # TODO: else compare the history size to the max prompt tokens of the underlying model
+
         choice = response.create_single_choice()
         choice.open()
 
@@ -132,19 +157,13 @@ class AssistantApplication(ChatCompletion):
             await chain.run_chat(history, callback)
         except ReasonLengthException:
             finish_reason = FinishReason.LENGTH
-        except OpenAIError as e:
-            if e.error:
-                raise HTTPException(
-                    e.error.message,
-                    status_code=e.http_status or 500,
-                    code=e.error.code,
-                )
 
-            raise
+        if callback.invocations:
+            choice.set_state(State(invocations=callback.invocations))
 
-        choice.set_state(callback.get_state())
         choice.close(finish_reason)
 
-        response.set_usage(
-            usage_publisher.prompt_tokens, usage_publisher.completion_tokens
-        )
+        response.set_usage(model.prompt_tokens, model.completion_tokens)
+
+        if discarded_messages is not None:
+            response.set_discarded_messages(discarded_messages)

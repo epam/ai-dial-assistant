@@ -13,7 +13,7 @@ from aidial_assistant.chain.callbacks.command_callback import CommandCallback
 from aidial_assistant.chain.callbacks.result_callback import ResultCallback
 from aidial_assistant.commands.base import ExecutionCallback, ResultObject
 from aidial_assistant.commands.run_plugin import RunPlugin
-from aidial_assistant.utils.state import Invocation, State
+from aidial_assistant.utils.state import Invocation
 
 
 class PluginNameArgCallback(ArgCallback):
@@ -113,6 +113,7 @@ class AssistantChainCallback(ChainCallback):
         self.choice = choice
         self._invocations: list[Invocation] = []
         self._invocation_index: int = -1
+        self._discarded_messages: int = 0
 
     @override
     def command_callback(self) -> CommandCallback:
@@ -138,5 +139,6 @@ class AssistantChainCallback(ChainCallback):
         stage.append_content(f"Error: {error}\n")
         stage.close(Status.FAILED)
 
-    def get_state(self):
-        return State(invocations=self._invocations)
+    @property
+    def invocations(self) -> list[Invocation]:
+        return self._invocations

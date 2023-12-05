@@ -18,11 +18,7 @@ from aidial_assistant.chain.command_result import (
 )
 from aidial_assistant.chain.dialogue import Dialogue
 from aidial_assistant.chain.history import History
-from aidial_assistant.chain.model_client import (
-    Message,
-    ModelClient,
-    UsagePublisher,
-)
+from aidial_assistant.chain.model_client import Message, ModelClient
 from aidial_assistant.chain.model_response_reader import (
     AssistantProtocolException,
     CommandsReader,
@@ -48,23 +44,17 @@ CommandConstructor = Callable[[], Command]
 CommandDict = dict[str, CommandConstructor]
 
 
-class MaxRetryCountExceededException(Exception):
-    pass
-
-
 class CommandChain:
     def __init__(
         self,
         name: str,
         model_client: ModelClient,
         command_dict: CommandDict,
-        usage_publisher: UsagePublisher,
         max_retry_count: int = DEFAULT_MAX_RETRY_COUNT,
     ):
         self.name = name
         self.model_client = model_client
         self.command_dict = command_dict
-        self.usage_publisher = usage_publisher
         self.max_retry_count = max_retry_count
 
     def _log_message(self, role: Role, content: str):
@@ -81,8 +71,7 @@ class CommandChain:
             messages = history.to_protocol_messages()
             while True:
                 pair = await self._run_with_protocol_failure_retries(
-                    callback,
-                    self._reinforce_json_format(messages + dialogue.messages),
+                    callback, messages + dialogue.messages
                 )
 
                 if pair is None:
@@ -96,7 +85,7 @@ class CommandChain:
                     dialogue,
                 )
                 if not dialogue.is_empty()
-                else history.to_client_messages()
+                else history.to_user_messages()
             )
             await self._generate_result(messages, callback)
         except InvalidRequestError as e:
@@ -112,15 +101,14 @@ class CommandChain:
     async def _run_with_protocol_failure_retries(
         self, callback: ChainCallback, messages: list[Message]
     ) -> Tuple[str, str] | None:
-        self._log_messages(messages)
         last_error: Exception | None = None
         try:
-            retry: int = 0
+            self._log_messages(messages)
             retries = Dialogue()
             while True:
                 chunk_stream = CumulativeStream(
                     self.model_client.agenerate(
-                        messages + retries.messages, self.usage_publisher
+                        self._reinforce_json_format(messages + retries.messages)
                     )
                 )
                 try:
@@ -139,15 +127,17 @@ class CommandChain:
                 except (JsonParsingException, AssistantProtocolException) as e:
                     logger.exception("Failed to process model response")
 
+                    retry_count = len(retries.messages) // 2
                     callback.on_error(
-                        "Error" if retry == 0 else f"Error (retry {retry})",
+                        "Error"
+                        if retry_count == 0
+                        else f"Error (retry {retry_count})",
                         "The model failed to construct addon request.",
                     )
 
-                    if retry >= self.max_retry_count:
+                    if retry_count >= self.max_retry_count:
                         raise
 
-                    retry += 1
                     last_error = e
                     retries.append(
                         chunk_stream.buffer,
@@ -157,6 +147,8 @@ class CommandChain:
                     self._log_message(Role.ASSISTANT, chunk_stream.buffer)
         except InvalidRequestError as e:
             if last_error:
+                # Retries can increase the prompt size, which may lead to token overflow.
+                # Thus, if the original error was a protocol error, it should be thrown instead.
                 raise last_error
 
             callback.on_error("Error", str(e))
@@ -211,7 +203,7 @@ class CommandChain:
     async def _generate_result(
         self, messages: list[Message], callback: ChainCallback
     ):
-        stream = self.model_client.agenerate(messages, self.usage_publisher)
+        stream = self.model_client.agenerate(messages)
 
         await CommandChain._to_result(stream, callback.result_callback())
 

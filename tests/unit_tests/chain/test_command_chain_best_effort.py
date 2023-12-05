@@ -10,11 +10,7 @@ from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
 from aidial_assistant.chain.callbacks.result_callback import ResultCallback
 from aidial_assistant.chain.command_chain import CommandChain
 from aidial_assistant.chain.history import History, ScopedMessage
-from aidial_assistant.chain.model_client import (
-    Message,
-    ModelClient,
-    UsagePublisher,
-)
+from aidial_assistant.chain.model_client import Message, ModelClient
 from aidial_assistant.commands.base import Command, TextResult
 from tests.utils.async_helper import to_async_string, to_async_strings
 
@@ -54,12 +50,10 @@ async def test_model_doesnt_support_protocol():
     model_client.agenerate.side_effect = to_async_strings(
         ["cannot reply in JSON format", BEST_EFFORT_ANSWER]
     )
-    usage_publisher = Mock(spec=UsagePublisher)
     command_chain = CommandChain(
         name="TEST",
         model_client=model_client,
         command_dict={},
-        usage_publisher=usage_publisher,
         max_retry_count=0,
     )
     chain_callback = Mock(spec=ChainCallback)
@@ -79,15 +73,13 @@ async def test_model_doesnt_support_protocol():
             [
                 Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
                 Message.user(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
-            ],
-            usage_publisher,
+            ]
         ),
         call(
             [
                 Message.system(SYSTEM_MESSAGE),
                 Message.user(USER_MESSAGE),
-            ],
-            usage_publisher,
+            ]
         ),
     ]
 
@@ -104,12 +96,10 @@ async def test_model_partially_supports_protocol():
     )
     test_command = Mock(spec=Command)
     test_command.execute.return_value = TextResult(TEST_COMMAND_OUTPUT)
-    usage_publisher = Mock(spec=UsagePublisher)
     command_chain = CommandChain(
         name="TEST",
         model_client=model_client,
         command_dict={TEST_COMMAND_NAME: lambda *_: test_command},
-        usage_publisher=usage_publisher,
         max_retry_count=0,
     )
     chain_callback = MagicMock(spec=ChainCallback)
@@ -133,8 +123,7 @@ async def test_model_partially_supports_protocol():
             [
                 Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
                 Message.user(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
-            ],
-            usage_publisher,
+            ]
         ),
         call(
             [
@@ -142,8 +131,7 @@ async def test_model_partially_supports_protocol():
                 Message.user(USER_MESSAGE),
                 Message.assistant(TEST_COMMAND_REQUEST),
                 Message.user(f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"),
-            ],
-            usage_publisher,
+            ]
         ),
         call(
             [
@@ -151,8 +139,7 @@ async def test_model_partially_supports_protocol():
                 Message.user(
                     f"user_message={USER_MESSAGE}, error={FAILED_PROTOCOL_ERROR}, dialogue={succeeded_dialogue}"
                 ),
-            ],
-            usage_publisher,
+            ]
         ),
     ]
 
@@ -167,12 +154,10 @@ async def test_no_tokens_for_tools():
     ]
     test_command = Mock(spec=Command)
     test_command.execute.return_value = TextResult(TEST_COMMAND_OUTPUT)
-    usage_publisher = Mock(spec=UsagePublisher)
     command_chain = CommandChain(
         name="TEST",
         model_client=model_client,
         command_dict={TEST_COMMAND_NAME: lambda *_: test_command},
-        usage_publisher=usage_publisher,
         max_retry_count=0,
     )
     chain_callback = MagicMock(spec=ChainCallback)
@@ -192,8 +177,7 @@ async def test_no_tokens_for_tools():
             [
                 Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
                 Message.user(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
-            ],
-            usage_publisher,
+            ]
         ),
         call(
             [
@@ -201,8 +185,7 @@ async def test_no_tokens_for_tools():
                 Message.user(USER_MESSAGE),
                 Message.assistant(TEST_COMMAND_REQUEST),
                 Message.user(f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"),
-            ],
-            usage_publisher,
+            ]
         ),
         call(
             [
@@ -210,7 +193,6 @@ async def test_no_tokens_for_tools():
                 Message.user(
                     f"user_message={USER_MESSAGE}, error={NO_TOKENS_ERROR}, dialogue=[]"
                 ),
-            ],
-            usage_publisher,
+            ]
         ),
     ]

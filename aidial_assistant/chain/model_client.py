@@ -1,6 +1,5 @@
-from abc import ABC
-from collections import defaultdict
-from typing import Any, AsyncIterator, List
+from abc import ABC, abstractmethod
+from typing import Any, AsyncIterator, List, TypedDict
 
 import openai
 from aidial_sdk.chat_completion import Role
@@ -32,21 +31,15 @@ class Message(BaseModel):
         return cls(role=Role.ASSISTANT, content=content)
 
 
-class UsagePublisher:
-    def __init__(self):
-        self.total_usage = defaultdict(int)
+class Usage(TypedDict):
+    prompt_tokens: int
+    completion_tokens: int
 
-    def publish(self, usage: dict[str, int]):
-        for k, v in usage.items():
-            self.total_usage[k] += v
 
-    @property
-    def prompt_tokens(self) -> int:
-        return self.total_usage["prompt_tokens"]
-
-    @property
-    def completion_tokens(self) -> int:
-        return self.total_usage["completion_tokens"]
+class ExtraResultsCallback(ABC):
+    @abstractmethod
+    def on_discarded_messages(self, discarded_messages: int):
+        pass
 
 
 class ModelClient(ABC):
@@ -58,21 +51,38 @@ class ModelClient(ABC):
         self.model_args = model_args
         self.buffer_size = buffer_size
 
+        self._prompt_tokens: int = 0
+        self._completion_tokens: int = 0
+
     async def agenerate(
-        self, messages: List[Message], usage_publisher: UsagePublisher
+        self,
+        messages: List[Message],
+        extra_results_callback: ExtraResultsCallback | None = None,
+        **kwargs,
     ) -> AsyncIterator[str]:
         async with ClientSession(read_bufsize=self.buffer_size) as session:
             openai.aiosession.set(session)
 
             model_result = await openai.ChatCompletion.acreate(
-                **self.model_args,
-                messages=[message.to_openai_message() for message in messages]
+                messages=[message.to_openai_message() for message in messages],
+                **self.model_args | kwargs,
             )
 
+            finish_reason_length = False
             async for chunk in model_result:  # type: ignore
-                usage = chunk.get("usage")
+                usage: Usage | None = chunk.get("usage")
                 if usage:
-                    usage_publisher.publish(usage)
+                    self._prompt_tokens += usage["prompt_tokens"]
+                    self._completion_tokens += usage["completion_tokens"]
+
+                if extra_results_callback:
+                    discarded_messages: int | None = chunk.get(
+                        "statistics", {}
+                    ).get("discarded_messages")
+                    if discarded_messages is not None:
+                        extra_results_callback.on_discarded_messages(
+                            discarded_messages
+                        )
 
                 choice = chunk["choices"][0]
                 text = choice["delta"].get("content")
@@ -80,4 +90,15 @@ class ModelClient(ABC):
                     yield text
 
                 if choice.get("finish_reason") == "length":
-                    raise ReasonLengthException()
+                    finish_reason_length = True
+
+            if finish_reason_length:
+                raise ReasonLengthException()
+
+    @property
+    def prompt_tokens(self) -> int:
+        return self._prompt_tokens
+
+    @property
+    def completion_tokens(self) -> int:
+        return self._completion_tokens
