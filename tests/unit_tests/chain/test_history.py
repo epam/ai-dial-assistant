@@ -1,17 +1,10 @@
-from typing import AsyncIterator
 from unittest.mock import Mock
 
 import pytest
 from jinja2 import Template
-from pydantic import BaseModel
 
 from aidial_assistant.chain.history import History, MessageScope, ScopedMessage
-from aidial_assistant.chain.model_client import (
-    ExtraResultsCallback,
-    Message,
-    ModelClient,
-    ReasonLengthException,
-)
+from aidial_assistant.model.model_client import Message, ModelClient
 
 TRUNCATION_TEST_DATA = [
     (0, [0, 1, 2, 3, 4, 5, 6]),
@@ -22,17 +15,6 @@ TRUNCATION_TEST_DATA = [
 ]
 
 MAX_PROMPT_TOKENS = 123
-
-
-class ModelSideEffect(BaseModel):
-    discarded_messages: int
-
-    async def agenerate(
-        self, _, callback: ExtraResultsCallback, **kwargs
-    ) -> AsyncIterator[str]:
-        callback.on_discarded_messages(self.discarded_messages)
-        yield "dummy"
-        raise ReasonLengthException()
 
 
 @pytest.mark.asyncio
@@ -61,9 +43,8 @@ async def test_history_truncation(
         ],
     )
 
-    side_effect = ModelSideEffect(discarded_messages=discarded_messages)
     model_client = Mock(spec=ModelClient)
-    model_client.agenerate.side_effect = side_effect.agenerate
+    model_client.get_discarded_messages.return_value = discarded_messages
 
     actual = await history.truncate(MAX_PROMPT_TOKENS, model_client)
 
@@ -75,10 +56,6 @@ async def test_history_truncation(
     assert actual.scoped_messages == [
         history.scoped_messages[i] for i in expected_indices
     ]
-    assert (
-        model_client.agenerate.call_args.kwargs["max_prompt_tokens"]
-        == MAX_PROMPT_TOKENS
-    )
 
 
 @pytest.mark.asyncio
@@ -92,9 +69,8 @@ async def test_truncation_overflow():
         ],
     )
 
-    side_effect = ModelSideEffect(discarded_messages=1)
     model_client = Mock(spec=ModelClient)
-    model_client.agenerate.side_effect = side_effect.agenerate
+    model_client.get_discarded_messages.return_value = 1
 
     with pytest.raises(Exception) as exc_info:
         await history.truncate(MAX_PROMPT_TOKENS, model_client)
@@ -117,9 +93,8 @@ async def test_truncation_with_incorrect_message_sequence():
         ],
     )
 
-    side_effect = ModelSideEffect(discarded_messages=1)
     model_client = Mock(spec=ModelClient)
-    model_client.agenerate.side_effect = side_effect.agenerate
+    model_client.get_discarded_messages.return_value = 1
 
     with pytest.raises(Exception) as exc_info:
         await history.truncate(MAX_PROMPT_TOKENS, model_client)

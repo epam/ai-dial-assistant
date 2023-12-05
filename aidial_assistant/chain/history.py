@@ -3,20 +3,15 @@ from enum import Enum
 from aidial_sdk.chat_completion import Role
 from jinja2 import Template
 from pydantic import BaseModel
-from typing_extensions import override
 
+from aidial_assistant.application.prompts import ENFORCE_JSON_FORMAT_TEMPLATE
 from aidial_assistant.chain.command_result import (
     CommandInvocation,
     commands_to_text,
 )
 from aidial_assistant.chain.dialogue import Dialogue
-from aidial_assistant.chain.model_client import (
-    ExtraResultsCallback,
-    Message,
-    ModelClient,
-    ReasonLengthException,
-)
 from aidial_assistant.commands.reply import Reply
+from aidial_assistant.model.model_client import Message, ModelClient
 
 
 class ContextLengthExceeded(Exception):
@@ -33,17 +28,16 @@ class ScopedMessage(BaseModel):
     message: Message
 
 
-class ModelExtraResultsCallback(ExtraResultsCallback):
-    def __init__(self):
-        self._discarded_messages: int | None = None
-
-    @override
-    def on_discarded_messages(self, discarded_messages: int):
-        self._discarded_messages = discarded_messages
-
-    @property
-    def discarded_messages(self) -> int | None:
-        return self._discarded_messages
+def enforce_json_format(messages: list[Message]) -> list[Message]:
+    last_message = messages[-1]
+    return messages[:-1] + [
+        Message(
+            role=last_message.role,
+            content=ENFORCE_JSON_FORMAT_TEMPLATE.render(
+                response=last_message.content
+            ),
+        ),
+    ]
 
 
 class History:
@@ -128,28 +122,16 @@ class History:
     async def truncate(
         self, max_prompt_tokens: int, model_client: ModelClient
     ) -> "History":
-        extra_results_callback = ModelExtraResultsCallback()
-        # TODO: This will be replaced with a dedicated truncation call on model client once implemented.
-        stream = model_client.agenerate(
+        discarded_messages = await model_client.get_discarded_messages(
             self.to_protocol_messages(),
-            extra_results_callback,
-            max_prompt_tokens=max_prompt_tokens,
-            max_tokens=1,
+            max_prompt_tokens,
         )
-        try:
-            async for _ in stream:
-                pass
-        except ReasonLengthException:
-            # Expected for max_tokens=1
-            pass
 
-        if extra_results_callback.discarded_messages:
+        if discarded_messages > 0:
             return History(
                 assistant_system_message_template=self.assistant_system_message_template,
                 best_effort_template=self.best_effort_template,
-                scoped_messages=self._skip_messages(
-                    extra_results_callback.discarded_messages
-                ),
+                scoped_messages=self._skip_messages(discarded_messages),
             )
 
         return self

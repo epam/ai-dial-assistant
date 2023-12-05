@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any, AsyncIterator, List, TypedDict
 
 import openai
@@ -36,9 +36,19 @@ class Usage(TypedDict):
     completion_tokens: int
 
 
-class ExtraResultsCallback(ABC):
-    @abstractmethod
+class ExtraResultsCallback:
     def on_discarded_messages(self, discarded_messages: int):
+        pass
+
+    def on_prompt_tokens(self, prompt_tokens: int):
+        pass
+
+
+async def _flush_stream(stream: AsyncIterator[str]):
+    try:
+        async for _ in stream:
+            pass
+    except ReasonLengthException:
         pass
 
 
@@ -51,8 +61,8 @@ class ModelClient(ABC):
         self.model_args = model_args
         self.buffer_size = buffer_size
 
-        self._prompt_tokens: int = 0
-        self._completion_tokens: int = 0
+        self._total_prompt_tokens: int = 0
+        self._total_completion_tokens: int = 0
 
     async def agenerate(
         self,
@@ -72,8 +82,11 @@ class ModelClient(ABC):
             async for chunk in model_result:  # type: ignore
                 usage: Usage | None = chunk.get("usage")
                 if usage:
-                    self._prompt_tokens += usage["prompt_tokens"]
-                    self._completion_tokens += usage["completion_tokens"]
+                    prompt_tokens = usage["prompt_tokens"]
+                    self._total_prompt_tokens += prompt_tokens
+                    self._total_completion_tokens += usage["completion_tokens"]
+                    if extra_results_callback:
+                        extra_results_callback.on_prompt_tokens(prompt_tokens)
 
                 if extra_results_callback:
                     discarded_messages: int | None = chunk.get(
@@ -95,10 +108,56 @@ class ModelClient(ABC):
             if finish_reason_length:
                 raise ReasonLengthException()
 
-    @property
-    def prompt_tokens(self) -> int:
-        return self._prompt_tokens
+    # TODO: Use a dedicated endpoint for counting tokens.
+    #  This request may throw an error if the number of tokens is too large.
+    async def count_tokens(self, messages: list[Message]) -> int:
+        class PromptTokensCallback(ExtraResultsCallback):
+            def __init__(self):
+                self.token_count: int | None = None
+
+            def on_prompt_tokens(self, prompt_tokens: int):
+                self.token_count = prompt_tokens
+
+        callback = PromptTokensCallback()
+        await _flush_stream(
+            self.agenerate(
+                messages, extra_results_callback=callback, max_tokens=1
+            )
+        )
+        if callback.token_count is None:
+            raise Exception("No token count received.")
+
+        return callback.token_count
+
+    # TODO: Use a dedicated endpoint for discarded_messages.
+    async def get_discarded_messages(
+        self, messages: list[Message], max_prompt_tokens: int
+    ) -> int:
+        class DiscardedMessagesCallback(ExtraResultsCallback):
+            def __init__(self):
+                self.message_count: int | None = None
+
+            def on_discarded_messages(self, discarded_messages: int):
+                self.message_count = discarded_messages
+
+        callback = DiscardedMessagesCallback()
+        await _flush_stream(
+            self.agenerate(
+                messages,
+                extra_results_callback=callback,
+                max_prompt_tokens=max_prompt_tokens,
+                max_tokens=1,
+            )
+        )
+        if callback.message_count is None:
+            raise Exception("No message count received.")
+
+        return callback.message_count
 
     @property
-    def completion_tokens(self) -> int:
-        return self._completion_tokens
+    def total_prompt_tokens(self) -> int:
+        return self._total_prompt_tokens
+
+    @property
+    def total_completion_tokens(self) -> int:
+        return self._total_completion_tokens

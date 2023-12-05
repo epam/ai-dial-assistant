@@ -3,7 +3,7 @@ from typing import TypedDict
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 
 from aidial_assistant.chain.history import MessageScope, ScopedMessage
-from aidial_assistant.chain.model_client import Message as ModelMessage
+from aidial_assistant.model.model_client import Message as ModelMessage
 
 
 class Invocation(TypedDict):

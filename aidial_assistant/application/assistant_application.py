@@ -7,6 +7,9 @@ from aidial_sdk.chat_completion.request import Addon, Message, Request, Role
 from aidial_sdk.chat_completion.response import Response
 from aiohttp import hdrs
 
+from aidial_assistant.application.addons_dialogue_limiter import (
+    AddonsDialogueLimiter,
+)
 from aidial_assistant.application.args import parse_args
 from aidial_assistant.application.assistant_callback import (
     AssistantChainCallback,
@@ -17,12 +20,12 @@ from aidial_assistant.application.prompts import (
 )
 from aidial_assistant.chain.command_chain import CommandChain, CommandDict
 from aidial_assistant.chain.history import History
-from aidial_assistant.chain.model_client import (
+from aidial_assistant.commands.reply import Reply
+from aidial_assistant.commands.run_plugin import PluginInfo, RunPlugin
+from aidial_assistant.model.model_client import (
     ModelClient,
     ReasonLengthException,
 )
-from aidial_assistant.commands.reply import Reply
-from aidial_assistant.commands.run_plugin import PluginInfo, RunPlugin
 from aidial_assistant.utils.exceptions import (
     RequestParameterValidationError,
     unhandled_exception_handler,
@@ -124,8 +127,12 @@ class AssistantApplication(ChatCompletion):
                 or info.ai_plugin.description_for_human
             )
 
+        # TODO: Add max_addons_dialogue_tokens as a request parameter
+        max_addons_dialogue_tokens = 1000
         command_dict: CommandDict = {
-            RunPlugin.token(): lambda: RunPlugin(model, tools),
+            RunPlugin.token(): lambda: RunPlugin(
+                model, tools, max_addons_dialogue_tokens
+            ),
             Reply.token(): Reply,
         }
         chain = CommandChain(
@@ -154,7 +161,10 @@ class AssistantApplication(ChatCompletion):
         callback = AssistantChainCallback(choice)
         finish_reason = FinishReason.STOP
         try:
-            await chain.run_chat(history, callback)
+            model_request_limiter = AddonsDialogueLimiter(
+                max_addons_dialogue_tokens, model
+            )
+            await chain.run_chat(history, callback, model_request_limiter)
         except ReasonLengthException:
             finish_reason = FinishReason.LENGTH
 
@@ -163,7 +173,9 @@ class AssistantApplication(ChatCompletion):
 
         choice.close(finish_reason)
 
-        response.set_usage(model.prompt_tokens, model.completion_tokens)
+        response.set_usage(
+            model.total_prompt_tokens, model.total_completion_tokens
+        )
 
         if discarded_messages is not None:
             response.set_discarded_messages(discarded_messages)

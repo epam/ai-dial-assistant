@@ -13,11 +13,6 @@ from aidial_assistant.chain.command_chain import (
     CommandConstructor,
 )
 from aidial_assistant.chain.history import History, ScopedMessage
-from aidial_assistant.chain.model_client import (
-    Message,
-    ModelClient,
-    ReasonLengthException,
-)
 from aidial_assistant.commands.base import (
     Command,
     ExecutionCallback,
@@ -27,6 +22,11 @@ from aidial_assistant.commands.base import (
 from aidial_assistant.commands.open_api import OpenAPIChatCommand
 from aidial_assistant.commands.plugin_callback import PluginChainCallback
 from aidial_assistant.commands.reply import Reply
+from aidial_assistant.model.model_client import (
+    Message,
+    ModelClient,
+    ReasonLengthException,
+)
 from aidial_assistant.open_api.operation_selector import collect_operations
 from aidial_assistant.utils.open_ai_plugin import OpenAIPluginInfo
 
@@ -38,10 +38,14 @@ class PluginInfo(BaseModel):
 
 class RunPlugin(Command):
     def __init__(
-        self, model_client: ModelClient, plugins: dict[str, PluginInfo]
+        self,
+        model_client: ModelClient,
+        plugins: dict[str, PluginInfo],
+        max_completion_tokens: int,
     ):
         self.model_client = model_client
         self.plugins = plugins
+        self.max_completion_tokens = max_completion_tokens
 
     @staticmethod
     def token():
@@ -97,6 +101,7 @@ class RunPlugin(Command):
             model_client=self.model_client,
             name="PLUGIN:" + name,
             command_dict=command_dict,
+            max_completion_tokens=self.max_completion_tokens,
         )
 
         callback = PluginChainCallback(execution_callback)

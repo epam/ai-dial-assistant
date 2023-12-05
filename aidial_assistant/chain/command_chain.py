@@ -1,5 +1,6 @@
 import json
 import logging
+from abc import ABC, abstractmethod
 from typing import Any, AsyncIterator, Callable, Tuple, cast
 
 from aidial_sdk.chat_completion.request import Role
@@ -16,9 +17,8 @@ from aidial_assistant.chain.command_result import (
     commands_to_text,
     responses_to_text,
 )
-from aidial_assistant.chain.dialogue import Dialogue
+from aidial_assistant.chain.dialogue import Dialogue, DialogueTurn
 from aidial_assistant.chain.history import History
-from aidial_assistant.chain.model_client import Message, ModelClient
 from aidial_assistant.chain.model_response_reader import (
     AssistantProtocolException,
     CommandsReader,
@@ -30,6 +30,7 @@ from aidial_assistant.json_stream.exceptions import JsonParsingException
 from aidial_assistant.json_stream.json_node import JsonNode
 from aidial_assistant.json_stream.json_parser import JsonParser
 from aidial_assistant.json_stream.json_string import JsonString
+from aidial_assistant.model.model_client import Message, ModelClient
 from aidial_assistant.utils.stream import CumulativeStream
 
 logger = logging.getLogger(__name__)
@@ -44,17 +45,33 @@ CommandConstructor = Callable[[], Command]
 CommandDict = dict[str, CommandConstructor]
 
 
+class LimitExceededException(Exception):
+    pass
+
+
+class ModelRequestLimiter(ABC):
+    @abstractmethod
+    async def verify_limit(self, messages: list[Message]):
+        pass
+
+
 class CommandChain:
     def __init__(
         self,
         name: str,
         model_client: ModelClient,
         command_dict: CommandDict,
+        max_completion_tokens: int | None = None,
         max_retry_count: int = DEFAULT_MAX_RETRY_COUNT,
     ):
         self.name = name
         self.model_client = model_client
         self.command_dict = command_dict
+        self.model_extra_args = (
+            {}
+            if max_completion_tokens is None
+            else {"max_tokens": max_completion_tokens}
+        )
         self.max_retry_count = max_retry_count
 
     def _log_message(self, role: Role, content: str):
@@ -65,19 +82,26 @@ class CommandChain:
             for message in messages:
                 self._log_message(message.role, message.content)
 
-    async def run_chat(self, history: History, callback: ChainCallback):
+    async def run_chat(
+        self,
+        history: History,
+        callback: ChainCallback,
+        model_request_limiter: ModelRequestLimiter | None = None,
+    ):
         dialogue = Dialogue()
         try:
             messages = history.to_protocol_messages()
             while True:
-                pair = await self._run_with_protocol_failure_retries(
-                    callback, messages + dialogue.messages
+                dialogue_turn = await self._run_with_protocol_failure_retries(
+                    callback,
+                    messages + dialogue.messages,
+                    model_request_limiter,
                 )
 
-                if pair is None:
+                if dialogue_turn is None:
                     break
 
-                dialogue.append(pair[0], pair[1])
+                dialogue.append(dialogue_turn)
         except (JsonParsingException, AssistantProtocolException):
             messages = (
                 history.to_best_effort_messages(
@@ -88,27 +112,39 @@ class CommandChain:
                 else history.to_user_messages()
             )
             await self._generate_result(messages, callback)
-        except InvalidRequestError as e:
-            if dialogue.is_empty() or e.code == "429":
+        except (InvalidRequestError, LimitExceededException) as e:
+            if dialogue.is_empty() or (
+                isinstance(e, InvalidRequestError) and e.code == "429"
+            ):
                 raise
 
             # Assuming the context length is exceeded
             dialogue.pop()
+            # TODO: Limit the error message size. The error message should not exceed reserved assistant overheads.
             await self._generate_result(
                 history.to_best_effort_messages(str(e), dialogue), callback
             )
 
     async def _run_with_protocol_failure_retries(
-        self, callback: ChainCallback, messages: list[Message]
-    ) -> Tuple[str, str] | None:
+        self,
+        callback: ChainCallback,
+        messages: list[Message],
+        model_request_limiter: ModelRequestLimiter | None = None,
+    ) -> DialogueTurn | None:
         last_error: Exception | None = None
         try:
             self._log_messages(messages)
             retries = Dialogue()
             while True:
+                all_messages = self._reinforce_json_format(
+                    messages + retries.messages
+                )
+                if model_request_limiter:
+                    await model_request_limiter.verify_limit(all_messages)
+
                 chunk_stream = CumulativeStream(
                     self.model_client.agenerate(
-                        self._reinforce_json_format(messages + retries.messages)
+                        all_messages, **self.model_extra_args  # type: ignore
                     )
                 )
                 try:
@@ -121,13 +157,16 @@ class CommandChain:
                         response_text = responses_to_text(responses)
 
                         callback.on_state(request_text, response_text)
-                        return request_text, response_text
+                        return DialogueTurn(
+                            assistant_message=request_text,
+                            user_message=response_text,
+                        )
 
-                    return None
+                    break
                 except (JsonParsingException, AssistantProtocolException) as e:
                     logger.exception("Failed to process model response")
 
-                    retry_count = len(retries.messages) // 2
+                    retry_count = retries.dialogue_turn_count()
                     callback.on_error(
                         "Error"
                         if retry_count == 0
@@ -140,12 +179,15 @@ class CommandChain:
 
                     last_error = e
                     retries.append(
-                        chunk_stream.buffer,
-                        "Failed to parse JSON commands: " + str(e),
+                        DialogueTurn(
+                            assistant_message=chunk_stream.buffer,
+                            user_message="Failed to parse JSON commands: "
+                            + str(e),
+                        )
                     )
                 finally:
                     self._log_message(Role.ASSISTANT, chunk_stream.buffer)
-        except InvalidRequestError as e:
+        except (InvalidRequestError, LimitExceededException) as e:
             if last_error:
                 # Retries can increase the prompt size, which may lead to token overflow.
                 # Thus, if the original error was a protocol error, it should be thrown instead.
