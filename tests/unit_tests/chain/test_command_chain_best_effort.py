@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, Mock, call
 import pytest
 from aidial_sdk.chat_completion import Role
 from jinja2 import Template
-from openai import InvalidRequestError
+from openai import BadRequestError
 
 from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
 from aidial_assistant.chain.callbacks.result_callback import ResultCallback
@@ -154,7 +154,7 @@ async def test_no_tokens_for_tools():
     model_client = Mock(spec=ModelClient)
     model_client.agenerate.side_effect = [
         to_async_string(TEST_COMMAND_REQUEST),
-        InvalidRequestError(NO_TOKENS_ERROR, ""),
+        BadRequestError(NO_TOKENS_ERROR),
         to_async_string(BEST_EFFORT_ANSWER),
     ]
     test_command = Mock(spec=Command)

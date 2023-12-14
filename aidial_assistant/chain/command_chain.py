@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any, AsyncIterator, Callable, Tuple, cast
 
 from aidial_sdk.chat_completion.request import Role
-from openai import InvalidRequestError
+from openai import BadRequestError
 
 from aidial_assistant.application.prompts import ENFORCE_JSON_FORMAT_TEMPLATE
 from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
@@ -112,9 +112,9 @@ class CommandChain:
                 else history.to_user_messages()
             )
             await self._generate_result(messages, callback)
-        except (InvalidRequestError, LimitExceededException) as e:
+        except (BadRequestError, LimitExceededException) as e:
             if dialogue.is_empty() or (
-                isinstance(e, InvalidRequestError) and e.code == "429"
+                isinstance(e, BadRequestError) and e.code == "429"
             ):
                 raise
 
@@ -187,7 +187,7 @@ class CommandChain:
                     )
                 finally:
                     self._log_message(Role.ASSISTANT, chunk_stream.buffer)
-        except (InvalidRequestError, LimitExceededException) as e:
+        except (BadRequestError, LimitExceededException) as e:
             if last_error:
                 # Retries can increase the prompt size, which may lead to token overflow.
                 # Thus, if the original error was a protocol error, it should be thrown instead.

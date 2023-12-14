@@ -1,9 +1,11 @@
 from abc import ABC
+from collections import defaultdict
 from typing import Any, AsyncIterator, List, TypedDict
 
-import openai
 from aidial_sdk.chat_completion import Role
-from aiohttp import ClientSession
+from aidial_sdk.utils.merge_chunks import merge
+from openai import AsyncOpenAI
+from openai.lib.azure import AsyncAzureOpenAI
 from pydantic import BaseModel
 
 
@@ -13,10 +15,34 @@ class ReasonLengthException(Exception):
 
 class Message(BaseModel):
     role: Role
-    content: str
+    content: str = ""
+    name: str = ""
+    tool_call_id: str = ""
+    tool_calls: list[dict[str, Any]] = []
 
     def to_openai_message(self) -> dict[str, str]:
-        return {"role": self.role.value, "content": self.content}
+        return (
+            {
+                "role": self.role.value,
+                "content": self.content,
+            }
+            | (
+                {
+                    "role": "tool",
+                    "name": self.name,
+                    "tool_call_id": self.tool_call_id,
+                }
+                if self.name
+                else {}
+            )
+            | (
+                {
+                    "tool_calls": self.tool_calls,
+                }
+                if self.tool_calls
+                else {}
+            )
+        )
 
     @classmethod
     def system(cls, content):
@@ -36,11 +62,43 @@ class Usage(TypedDict):
     completion_tokens: int
 
 
+class Parameters(TypedDict):
+    type: str
+    properties: dict[str, Any]
+    required: list[str]
+
+
+class Function(TypedDict):
+    name: str
+    description: str
+    parameters: Parameters
+
+
+class Tool(TypedDict):
+    type: str
+    function: Function
+
+
+class FunctionCall(TypedDict):
+    name: str
+    arguments: str
+
+
+class ToolCall(TypedDict):
+    index: int
+    id: str
+    type: str
+    function: FunctionCall
+
+
 class ExtraResultsCallback:
     def on_discarded_messages(self, discarded_messages: int):
         pass
 
     def on_prompt_tokens(self, prompt_tokens: int):
+        pass
+
+    def on_tool_calls(self, tool_calls: list[ToolCall]):
         pass
 
 
@@ -53,13 +111,9 @@ async def _flush_stream(stream: AsyncIterator[str]):
 
 
 class ModelClient(ABC):
-    def __init__(
-        self,
-        model_args: dict[str, Any],
-        buffer_size: int,
-    ):
+    def __init__(self, client: AsyncOpenAI, model_args: dict[str, Any]):
+        self.client = client
         self.model_args = model_args
-        self.buffer_size = buffer_size
 
         self._total_prompt_tokens: int = 0
         self._total_completion_tokens: int = 0
@@ -70,43 +124,53 @@ class ModelClient(ABC):
         extra_results_callback: ExtraResultsCallback | None = None,
         **kwargs,
     ) -> AsyncIterator[str]:
-        async with ClientSession(read_bufsize=self.buffer_size) as session:
-            openai.aiosession.set(session)
+        model_result = await self.client.chat.completions.create(
+            **self.model_args,
+            extra_body=kwargs,
+            stream=True,
+            messages=[message.to_openai_message() for message in messages],
+        )
 
-            model_result = await openai.ChatCompletion.acreate(
-                messages=[message.to_openai_message() for message in messages],
-                **self.model_args | kwargs,
-            )
-
-            finish_reason_length = False
-            async for chunk in model_result:  # type: ignore
-                usage: Usage | None = chunk.get("usage")
-                if usage:
-                    prompt_tokens = usage["prompt_tokens"]
-                    self._total_prompt_tokens += prompt_tokens
-                    self._total_completion_tokens += usage["completion_tokens"]
-                    if extra_results_callback:
-                        extra_results_callback.on_prompt_tokens(prompt_tokens)
-
+        finish_reason_length = False
+        tool_calls_chunks = []
+        async for chunk in model_result:  # type: ignore
+            chunk = chunk.dict()
+            usage: Usage | None = chunk.get("usage")
+            if usage:
+                prompt_tokens = usage["prompt_tokens"]
+                self._total_prompt_tokens += prompt_tokens
+                self._total_completion_tokens += usage["completion_tokens"]
                 if extra_results_callback:
-                    discarded_messages: int | None = chunk.get(
-                        "statistics", {}
-                    ).get("discarded_messages")
-                    if discarded_messages is not None:
-                        extra_results_callback.on_discarded_messages(
-                            discarded_messages
-                        )
+                    extra_results_callback.on_prompt_tokens(prompt_tokens)
 
-                choice = chunk["choices"][0]
-                text = choice["delta"].get("content")
-                if text:
-                    yield text
+            if extra_results_callback:
+                discarded_messages: int | None = chunk.get(
+                    "statistics", {}
+                ).get("discarded_messages")
+                if discarded_messages is not None:
+                    extra_results_callback.on_discarded_messages(
+                        discarded_messages
+                    )
 
-                if choice.get("finish_reason") == "length":
-                    finish_reason_length = True
+            choice = chunk["choices"][0]
+            delta = choice["delta"]
+            text = delta.get("content")
+            if text:
+                yield text
 
-            if finish_reason_length:
-                raise ReasonLengthException()
+            tool_calls_chunk = delta.get("tool_calls")
+            if tool_calls_chunk:
+                tool_calls_chunks.append(tool_calls_chunk)
+
+            if choice.get("finish_reason") == "length":
+                finish_reason_length = True
+
+        if finish_reason_length:
+            raise ReasonLengthException()
+
+        if extra_results_callback and tool_calls_chunks:
+            tool_calls: list[ToolCall] = merge(*tool_calls_chunks)
+            extra_results_callback.on_tool_calls(tool_calls)
 
     # TODO: Use a dedicated endpoint for counting tokens.
     #  This request may throw an error if the number of tokens is too large.
