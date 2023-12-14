@@ -5,7 +5,6 @@ from aidial_sdk.chat_completion import FinishReason
 from aidial_sdk.chat_completion.base import ChatCompletion
 from aidial_sdk.chat_completion.request import Addon, Message, Request, Role
 from aidial_sdk.chat_completion.response import Response
-from aiohttp import hdrs
 
 from aidial_assistant.application.addons_dialogue_limiter import (
     AddonsDialogueLimiter,
