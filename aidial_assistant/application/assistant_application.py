@@ -6,7 +6,6 @@ from aidial_sdk.chat_completion import FinishReason
 from aidial_sdk.chat_completion.base import ChatCompletion
 from aidial_sdk.chat_completion.request import Addon, Request
 from aidial_sdk.chat_completion.response import Response
-from aiohttp import hdrs
 from openai import InvalidRequestError, OpenAIError
 
 from aidial_assistant.application.args import parse_args
@@ -43,9 +42,6 @@ def get_request_args(request: Request) -> dict[str, str]:
         "api_version": request.api_version,
         "api_key": request.api_key,
         "user": request.user,
-        "headers": None
-        if request.jwt is None
-        else {hdrs.AUTHORIZATION: request.jwt},
     }
 
     return {k: v for k, v in args.items() if v is not None}
