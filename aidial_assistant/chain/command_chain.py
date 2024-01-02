@@ -236,7 +236,7 @@ class CommandChain:
 
     def _create_command(self, name: str) -> Command:
         if name not in self.command_dict:
-            raise Exception(
+            raise AssistantProtocolException(
                 f"The command '{name}' is expected to be one of {[*self.command_dict.keys()]}"
             )
 

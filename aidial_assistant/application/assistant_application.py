@@ -59,9 +59,6 @@ def _get_request_args(request: Request) -> dict[str, str]:
         "model": request.model,
         "temperature": request.temperature,
         "user": request.user,
-        "headers": None
-        if request.jwt is None
-        else {hdrs.AUTHORIZATION: request.jwt},
     }
 
     return {k: v for k, v in args.items() if v is not None}
