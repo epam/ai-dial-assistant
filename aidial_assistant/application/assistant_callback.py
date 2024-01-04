@@ -18,10 +18,12 @@ from aidial_assistant.utils.state import Invocation
 
 class PluginNameArgCallback(ArgCallback):
     def __init__(
-        self, callback: Callable[[str], None], name_overrides: dict[str, str]
+        self,
+        callback: Callable[[str], None],
+        addon_name_mapping: dict[str, str],
     ):
         super().__init__(0, callback)
-        self.name_overrides = name_overrides
+        self.addon_name_mapping = addon_name_mapping
 
         self._plugin_name = ""
 
@@ -33,16 +35,19 @@ class PluginNameArgCallback(ArgCallback):
     @override
     def on_arg_end(self):
         self.callback(
-            self.name_overrides.get(self._plugin_name, self._plugin_name) + "("
+            self.addon_name_mapping.get(self._plugin_name, self._plugin_name)
+            + "("
         )
 
 
 class RunPluginArgsCallback(ArgsCallback):
     def __init__(
-        self, callback: Callable[[str], None], name_overrides: dict[str, str]
+        self,
+        callback: Callable[[str], None],
+        addon_name_mapping: dict[str, str],
     ):
         super().__init__(callback)
-        self.name_overrides = name_overrides
+        self.addon_name_mapping = addon_name_mapping
 
     @override
     def on_args_start(self):
@@ -52,15 +57,15 @@ class RunPluginArgsCallback(ArgsCallback):
     def arg_callback(self) -> ArgCallback:
         self.arg_index += 1
         if self.arg_index == 0:
-            return PluginNameArgCallback(self.callback, self.name_overrides)
+            return PluginNameArgCallback(self.callback, self.addon_name_mapping)
         else:
             return ArgCallback(self.arg_index - 1, self.callback)
 
 
 class AssistantCommandCallback(CommandCallback):
-    def __init__(self, stage: Stage, name_overrides: dict[str, str]):
+    def __init__(self, stage: Stage, addon_name_mapping: dict[str, str]):
         self.stage = stage
-        self.name_overrides = name_overrides
+        self.addon_name_mapping = addon_name_mapping
 
         self._args_callback = ArgsCallback(self._on_stage_name)
 
@@ -68,7 +73,7 @@ class AssistantCommandCallback(CommandCallback):
     def on_command(self, command: str):
         if command == RunPlugin.token():
             self._args_callback = RunPluginArgsCallback(
-                self._on_stage_name, self.name_overrides
+                self._on_stage_name, self.addon_name_mapping
             )
         else:
             self._on_stage_name(command)
@@ -122,9 +127,9 @@ class AssistantResultCallback(ResultCallback):
 
 
 class AssistantChainCallback(ChainCallback):
-    def __init__(self, choice: Choice, name_overrides: dict[str, str]):
+    def __init__(self, choice: Choice, addon_name_mapping: dict[str, str]):
         self.choice = choice
-        self.name_overrides = name_overrides
+        self.addon_name_mapping = addon_name_mapping
 
         self._invocations: list[Invocation] = []
         self._invocation_index: int = -1
@@ -133,7 +138,7 @@ class AssistantChainCallback(ChainCallback):
     @override
     def command_callback(self) -> CommandCallback:
         return AssistantCommandCallback(
-            self.choice.create_stage(), self.name_overrides
+            self.choice.create_stage(), self.addon_name_mapping
         )
 
     @override

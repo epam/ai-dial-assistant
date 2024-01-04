@@ -33,7 +33,6 @@ from aidial_assistant.utils.open_ai_plugin import OpenAIPluginInfo
 
 class PluginInfo(BaseModel):
     info: OpenAIPluginInfo
-    name_override: str | None
     auth: str | None
 
 

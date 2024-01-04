@@ -52,13 +52,12 @@ def _get_request_args(request: Request) -> dict[str, str]:
 
 
 def _validate_addons(addons: list[Addon] | None):
-    if addons and any(addon.url is None for addon in addons):
-        for index, addon in enumerate(addons):
-            if addon.url is None:
-                raise RequestParameterValidationError(
-                    f"Missing required addon url at index {index}.",
-                    param="addons",
-                )
+    for index, addon in enumerate(addons or []):
+        if addon.url is None:
+            raise RequestParameterValidationError(
+                f"Missing required addon url at index {index}.",
+                param="addons",
+            )
 
 
 def _validate_messages(messages: list[Message]) -> None:
@@ -104,43 +103,47 @@ class AssistantApplication(ChatCompletion):
             [addon.url for addon in request.addons] if request.addons else [],  # type: ignore
         )
 
-        tools: dict[str, PluginInfo] = {}
-        tool_descriptions: dict[str, str] = {}
+        addons: dict[str, PluginInfo] = {}
+        # DIAL Core has own names for addons, so in stages we need to map them to the names used by the user
+        addon_name_mapping: dict[str, str] = {}
         for addon in request.addons or []:
-            info = await get_open_ai_plugin_info(addon.url)  # type: ignore
-            tools[info.ai_plugin.name_for_model] = PluginInfo(
+            addon_url: str = addon.url  # type: ignore
+            info = await get_open_ai_plugin_info(addon_url)
+            addons[info.ai_plugin.name_for_model] = PluginInfo(
                 info=info,
                 auth=get_plugin_auth(
                     info.ai_plugin.auth.type,
                     info.ai_plugin.auth.authorization_type,
-                    addon.url,  # type: ignore
+                    addon_url,
                     token_source,
                 ),
-                name_override=addon.name,
             )
 
-            tool_descriptions[info.ai_plugin.name_for_model] = (
-                info.open_api.info.description  # type: ignore
-                or info.ai_plugin.description_for_human
-            )
+            if addon.name:
+                addon_name_mapping[info.ai_plugin.name_for_model] = addon.name
 
         # TODO: Add max_addons_dialogue_tokens as a request parameter
         max_addons_dialogue_tokens = 1000
         command_dict: CommandDict = {
             RunPlugin.token(): lambda: RunPlugin(
-                model, tools, max_addons_dialogue_tokens
+                model, addons, max_addons_dialogue_tokens
             ),
             Reply.token(): Reply,
         }
         chain = CommandChain(
             model_client=model, name="ASSISTANT", command_dict=command_dict
         )
+        addon_descriptions = {
+            name: addon.info.open_api.info.description
+            or addon.info.ai_plugin.description_for_human
+            for name, addon in addons.items()
+        }
         history = History(
             assistant_system_message_template=MAIN_SYSTEM_DIALOG_MESSAGE.build(
-                tools=tool_descriptions
+                addons=addon_descriptions
             ),
             best_effort_template=MAIN_BEST_EFFORT_TEMPLATE.build(
-                tools=tool_descriptions
+                addons=addon_descriptions
             ),
             scoped_messages=parse_history(request.messages),
         )
@@ -155,14 +158,7 @@ class AssistantApplication(ChatCompletion):
         choice = response.create_single_choice()
         choice.open()
 
-        callback = AssistantChainCallback(
-            choice,
-            {
-                name: info.name_override
-                for name, info in tools.items()
-                if info.name_override
-            },
-        )
+        callback = AssistantChainCallback(choice, addon_name_mapping)
         finish_reason = FinishReason.STOP
         try:
             model_request_limiter = AddonsDialogueLimiter(
