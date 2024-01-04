@@ -99,23 +99,24 @@ class AssistantApplication(ChatCompletion):
             buffer_size=self.args.chat_conf.buffer_size,
         )
 
-        addons: list[str] = (
-            [addon.url for addon in request.addons] if request.addons else []  # type: ignore
+        token_source = AddonTokenSource(
+            request.headers,
+            [addon.url for addon in request.addons] if request.addons else [],  # type: ignore
         )
-        token_source = AddonTokenSource(request.headers, addons)
 
         tools: dict[str, PluginInfo] = {}
         tool_descriptions: dict[str, str] = {}
-        for addon in addons:
-            info = await get_open_ai_plugin_info(addon)
+        for addon in request.addons or []:
+            info = await get_open_ai_plugin_info(addon.url)  # type: ignore
             tools[info.ai_plugin.name_for_model] = PluginInfo(
                 info=info,
                 auth=get_plugin_auth(
                     info.ai_plugin.auth.type,
                     info.ai_plugin.auth.authorization_type,
-                    addon,
+                    addon.url,  # type: ignore
                     token_source,
                 ),
+                display_name=addon.name,
             )
 
             tool_descriptions[info.ai_plugin.name_for_model] = (
@@ -154,7 +155,14 @@ class AssistantApplication(ChatCompletion):
         choice = response.create_single_choice()
         choice.open()
 
-        callback = AssistantChainCallback(choice)
+        callback = AssistantChainCallback(
+            choice,
+            {
+                name: info.display_name
+                for name, info in tools.items()
+                if info.display_name
+            },
+        )
         finish_reason = FinishReason.STOP
         try:
             model_request_limiter = AddonsDialogueLimiter(
