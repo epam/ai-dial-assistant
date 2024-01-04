@@ -33,9 +33,8 @@ class PluginNameArgCallback(ArgCallback):
     @override
     def on_arg_end(self):
         self.callback(
-            self.display_names.get(self._plugin_name, self._plugin_name)
+            self.display_names.get(self._plugin_name, self._plugin_name) + "("
         )
-        self.callback("(")
 
 
 class RunPluginArgsCallback(ArgsCallback):
