@@ -2,13 +2,13 @@
 
 [[package]]
 name = "aidial-sdk"
-version = "0.3.0"
+version = "0.5.0"
 description = "Framework to create applications and model adapters for AI DIAL"
 optional = false
 python-versions = ">=3.8.1,<4.0"
 files = [
-    {file = "aidial_sdk-0.3.0-py3-none-any.whl", hash = "sha256:67f4efd1e44a1442741d089295e560257a42ec28658ad18040ada93ce1cb08bb"},
-    {file = "aidial_sdk-0.3.0.tar.gz", hash = "sha256:f5da5e57e839765d0440c5ddf3586748c20f6ee6233b85a70454bce16a6359cd"},
+    {file = "aidial_sdk-0.5.0-py3-none-any.whl", hash = "sha256:db0cb45440d055a4361cdd35baf3b7db4d51c3c5b7c63a901ca920638937a26f"},
+    {file = "aidial_sdk-0.5.0.tar.gz", hash = "sha256:29df146c44953ed90cecb07fb58c2087c800c511fa6a1a515392ed4de3b44621"},
 ]
 
 [package.dependencies]
@@ -1885,4 +1885,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "73ae85c178411c402c34edf6adde3638a7719ae4f25a6e1aee63b2efa43a673a"
+content-hash = "86678261ef71da9d241126587fab83682f3f9c9ef905878db5c7b152fbde619a"

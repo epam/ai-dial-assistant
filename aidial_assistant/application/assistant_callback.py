@@ -1,12 +1,12 @@
+import json
 from types import TracebackType
-from typing import Callable
+from typing import Callable, Any
 
 from aidial_sdk.chat_completion import Status
 from aidial_sdk.chat_completion.choice import Choice
 from aidial_sdk.chat_completion.stage import Stage
 from typing_extensions import override
 
-from aidial_assistant.chain.callbacks.arg_callback import ArgCallback
 from aidial_assistant.chain.callbacks.args_callback import ArgsCallback
 from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
 from aidial_assistant.chain.callbacks.command_callback import CommandCallback
@@ -16,36 +16,16 @@ from aidial_assistant.commands.run_plugin import RunPlugin
 from aidial_assistant.utils.state import Invocation
 
 
-class PluginNameArgCallback(ArgCallback):
-    def __init__(self, callback: Callable[[str], None]):
-        super().__init__(0, callback)
-
-    @override
-    def on_arg(self, chunk: str):
-        chunk = chunk.replace('"', "")
-        if len(chunk) > 0:
-            self.callback(chunk)
-
-    @override
-    def on_arg_end(self):
-        self.callback("(")
-
-
 class RunPluginArgsCallback(ArgsCallback):
     def __init__(self, callback: Callable[[str], None]):
         super().__init__(callback)
 
     @override
-    def on_args_start(self):
-        pass
-
-    @override
-    def arg_callback(self) -> ArgCallback:
-        self.arg_index += 1
-        if self.arg_index == 0:
-            return PluginNameArgCallback(self.callback)
-        else:
-            return ArgCallback(self.arg_index - 1, self.callback)
+    def on_args(self, args: dict[str, Any]):
+        args = args.copy()
+        name = args["name"]
+        del args["name"]
+        self.callback(name + "(" + json.dumps(args) + ")")
 
 
 class AssistantCommandCallback(CommandCallback):

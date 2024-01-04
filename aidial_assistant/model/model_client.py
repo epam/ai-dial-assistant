@@ -1,11 +1,9 @@
 from abc import ABC
-from collections import defaultdict
 from typing import Any, AsyncIterator, List, TypedDict
 
 from aidial_sdk.chat_completion import Role
 from aidial_sdk.utils.merge_chunks import merge
 from openai import AsyncOpenAI
-from openai.lib.azure import AsyncAzureOpenAI
 from pydantic import BaseModel
 
 
@@ -15,34 +13,23 @@ class ReasonLengthException(Exception):
 
 class Message(BaseModel):
     role: Role
-    content: str = ""
-    name: str = ""
-    tool_call_id: str = ""
-    tool_calls: list[dict[str, Any]] = []
+    content: str | None = None
+    tool_call_id: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
 
     def to_openai_message(self) -> dict[str, str]:
-        return (
-            {
-                "role": self.role.value,
-                "content": self.content,
-            }
-            | (
-                {
-                    "role": "tool",
-                    "name": self.name,
-                    "tool_call_id": self.tool_call_id,
-                }
-                if self.name
-                else {}
-            )
-            | (
-                {
-                    "tool_calls": self.tool_calls,
-                }
-                if self.tool_calls
-                else {}
-            )
-        )
+        result = {"role": self.role.value}
+
+        if self.content is not None:
+            result["content"] = self.content
+
+        if self.tool_call_id:
+            result["tool_call_id"] = self.tool_call_id
+
+        if self.tool_calls:
+            result["tool_calls"] = self.tool_calls
+
+        return result
 
     @classmethod
     def system(cls, content):

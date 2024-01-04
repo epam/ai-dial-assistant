@@ -1,20 +1,13 @@
+import json
 import logging
-import os
 from pathlib import Path
-from typing_extensions import override
 
 from aidial_sdk.chat_completion import FinishReason
 from aidial_sdk.chat_completion.base import ChatCompletion
-from aidial_sdk.chat_completion.request import (
-    Addon,
-    Message as SdkMessage,
-    Request,
-    Role,
-)
+from aidial_sdk.chat_completion.request import Addon
+from aidial_sdk.chat_completion.request import Message as SdkMessage
+from aidial_sdk.chat_completion.request import Request, Role
 from aidial_sdk.chat_completion.response import Response
-from aiohttp import hdrs
-from openai import AsyncOpenAI
-from openai._types import Omit
 from openai.lib.azure import AsyncAzureOpenAI
 
 from aidial_assistant.application.addons_dialogue_limiter import (
@@ -29,14 +22,21 @@ from aidial_assistant.application.prompts import (
     MAIN_SYSTEM_DIALOG_MESSAGE,
 )
 from aidial_assistant.chain.command_chain import CommandChain, CommandDict
-from aidial_assistant.chain.history import History
+from aidial_assistant.chain.command_result import (
+    CommandInvocation,
+    Commands,
+    Responses,
+)
+from aidial_assistant.chain.history import History, ScopedMessage, MessageScope
 from aidial_assistant.commands.reply import Reply
 from aidial_assistant.commands.run_plugin import PluginInfo, RunPlugin
 from aidial_assistant.model.model_client import (
+    Message,
     ModelClient,
     ReasonLengthException,
     Tool,
-    Message,
+    ToolCall,
+    FunctionCall,
 )
 from aidial_assistant.tools_chain.addon_runner import AddonRunner
 from aidial_assistant.tools_chain.tools_chain import ToolsChain
@@ -111,14 +111,64 @@ def _construct_function(name: str, description: str) -> Tool:
     }
 
 
-class MyClient(AsyncAzureOpenAI):
-    @property
-    @override
-    def default_headers(self) -> dict[str, str | Omit]:
-        headers = super().default_headers
-        del headers["Authorization"]
-
-        return headers
+def _convert_commands_to_tools(
+    scoped_messages: list[ScopedMessage],
+) -> list[Message]:
+    messages: list[Message] = []
+    next_tool_id: int = 0
+    last_call_count: int = 0
+    for scoped_message in scoped_messages:
+        message = scoped_message.message
+        if scoped_message.scope == MessageScope.INTERNAL:
+            if message.role == Role.ASSISTANT:
+                commands: Commands = json.loads(message.content)
+                messages.append(
+                    Message(
+                        role=Role.ASSISTANT,
+                        tool_calls=[
+                            ToolCall(
+                                index=index,
+                                id=str(next_tool_id + index),
+                                function=FunctionCall(
+                                    name=command["args"][0],
+                                    arguments=json.dumps(
+                                        {
+                                            "query": command["args"][1],
+                                        }
+                                    ),
+                                ),
+                                type="function",
+                            )
+                            for index, command in enumerate(
+                                commands["commands"]
+                            )
+                        ],
+                    )
+                )
+                last_call_count = len(commands["commands"])
+                next_tool_id += last_call_count
+            elif message.role == Role.USER:
+                responses: Responses = json.loads(message.content)
+                response_count = len(responses["responses"])
+                if response_count != last_call_count:
+                    raise RequestParameterValidationError(
+                        f"Expected {last_call_count} responses, but got {response_count}.",
+                        param="messages",
+                    )
+                first_tool_id = next_tool_id - last_call_count
+                messages.extend(
+                    [
+                        Message(
+                            role=Role.TOOL,
+                            tool_call_id=str(first_tool_id + index),
+                            content=response["response"],
+                        )
+                        for index, response in enumerate(responses["responses"])
+                    ]
+                )
+        else:
+            messages.append(scoped_message.message)
+    return messages
 
 
 class AssistantApplication(ChatCompletion):
@@ -133,7 +183,7 @@ class AssistantApplication(ChatCompletion):
         chat_args = _get_request_args(request)
 
         model = ModelClient(
-            client=MyClient(
+            client=AsyncAzureOpenAI(
                 azure_endpoint=self.args.openai_conf.api_base,
                 api_key=request.api_key,
                 api_version="2023-12-01-preview",
@@ -159,7 +209,7 @@ class AssistantApplication(ChatCompletion):
                 ),
             )
 
-        if request.model in {"gpt-4-turbo-1106", "gpt-4-1106-preview"}:
+        if request.model in {"gpt-4-turbo-1106", "anthropic.claude-v2-1"}:
             await AssistantApplication._run_native_tools_chat(
                 model, tools, request, response
             )
@@ -257,18 +307,14 @@ class AssistantApplication(ChatCompletion):
 
         callback = AssistantChainCallback(choice)
         finish_reason = FinishReason.STOP
-        messages = [
-            Message(
-                role=message.role,
-                content=message.content or "",
-            )
-            for message in request.messages
-        ]
+        messages = _convert_commands_to_tools(parse_history(request.messages))
         try:
             await chain.run_chat(messages, callback)
         except ReasonLengthException:
             finish_reason = FinishReason.LENGTH
 
+        if callback.invocations:
+            choice.set_state(State(invocations=callback.invocations))
         choice.close(finish_reason)
 
         response.set_usage(

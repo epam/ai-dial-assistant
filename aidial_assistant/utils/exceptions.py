@@ -2,7 +2,7 @@ import logging
 from functools import wraps
 
 from aidial_sdk import HTTPException
-from openai import OpenAIError, APIError
+from openai import APIError
 
 logger = logging.getLogger(__name__)
 

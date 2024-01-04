@@ -1,7 +1,7 @@
 import httpx
 import pytest
 from aidial_sdk import HTTPException
-from openai import OpenAIError, APIStatusError
+from openai import APIStatusError, OpenAIError
 
 from aidial_assistant.utils.exceptions import (
     RequestParameterValidationError,

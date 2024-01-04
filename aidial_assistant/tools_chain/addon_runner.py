@@ -5,6 +5,9 @@ from langchain_community.tools.openapi.utils.api_models import (
     APIPropertyBase,
 )
 
+from aidial_assistant.chain.model_response_reader import (
+    AssistantProtocolException,
+)
 from aidial_assistant.commands.base import (
     ExecutionCallback,
     ResultObject,
@@ -13,8 +16,8 @@ from aidial_assistant.commands.base import (
 from aidial_assistant.commands.plugin_callback import PluginChainCallback
 from aidial_assistant.commands.run_plugin import PluginInfo
 from aidial_assistant.model.model_client import (
-    ModelClient,
     Message,
+    ModelClient,
     ReasonLengthException,
     Tool,
 )
@@ -74,9 +77,13 @@ class AddonRunner(ToolRunner):
         arg: dict[str, Any],
         execution_callback: ExecutionCallback,
     ) -> ResultObject:
-        query: str = arg["query"]
+        if name not in self.addons:
+            raise AssistantProtocolException(
+                f"Addon '{name}' not found. Available addons: {list(self.addons.keys())}"
+            )
 
         addon = self.addons[name]
+
         ops = collect_operations(
             addon.info.open_api, addon.info.ai_plugin.api.url
         )
@@ -86,7 +93,7 @@ class AddonRunner(ToolRunner):
 
         messages = [
             Message.system(addon.info.ai_plugin.description_for_model),
-            Message.user(query),
+            Message.user(arg["query"]),
         ]
         chain_callback = PluginChainCallback(execution_callback)
         try:

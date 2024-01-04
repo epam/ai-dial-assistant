@@ -5,27 +5,29 @@ from aidial_sdk.chat_completion import Role
 
 from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
 from aidial_assistant.chain.callbacks.command_callback import CommandCallback
-from aidial_assistant.chain.history import History
+from aidial_assistant.chain.command_result import (
+    CommandInvocation,
+    CommandResult,
+    Status,
+    commands_to_text,
+    responses_to_text,
+)
 from aidial_assistant.model.model_client import (
-    ModelClient,
-    Message,
     ExtraResultsCallback,
-    ToolCall,
+    Message,
+    ModelClient,
     Tool,
+    ToolCall,
 )
 from aidial_assistant.tools_chain.tool_runner import ToolRunner
 
 
 def _publish_command(
-    command_callback: CommandCallback, name: str, arguments: str
+    command_callback: CommandCallback, name: str, arguments: dict[str, Any]
 ):
     command_callback.on_command(name)
     args_callback = command_callback.args_callback()
-    args_callback.on_args_start()
-    arg_callback = args_callback.arg_callback()
-    arg_callback.on_arg(arguments)
-    arg_callback.on_arg_end()
-    args_callback.on_args_end()
+    args_callback.on_args(arguments)
 
 
 class ToolCallsCallback(ExtraResultsCallback):
@@ -66,34 +68,47 @@ class ToolsChain:
                 )
             )
 
+            commands: list[CommandInvocation] = []
+            results: list[CommandResult] = []
             for tool_call in tool_calls_callback.tool_calls:
                 function = tool_call["function"]
                 name = function["name"]
-                arguments = function["arguments"]
+                arguments = json.loads(function["arguments"])
+                commands.append(CommandInvocation(command=name, args=arguments))
                 with callback.command_callback() as command_callback:
                     _publish_command(command_callback, name, arguments)
                     try:
                         result = await self.tool_runner.run(
                             name,
-                            json.loads(arguments),
+                            arguments,
                             command_callback.execution_callback(),
                         )
                         messages.append(
                             Message(
-                                role=Role.USER,
-                                name=name,
+                                role=Role.TOOL,
                                 tool_call_id=tool_call["id"],
                                 content=result.text,
                             )
                         )
                         command_callback.on_result(result)
+                        results.append(
+                            CommandResult(
+                                status=Status.SUCCESS, response=result.text
+                            )
+                        )
                     except Exception as e:
                         messages.append(
                             Message(
-                                role=Role.USER,
-                                name=name,
+                                role=Role.TOOL,
                                 tool_call_id=tool_call["id"],
                                 content=str(e),
                             )
                         )
                         command_callback.on_error(e)
+                        results.append(
+                            CommandResult(status=Status.ERROR, response=str(e))
+                        )
+
+            callback.on_state(
+                commands_to_text(commands), responses_to_text(results)
+            )
