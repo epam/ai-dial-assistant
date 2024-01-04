@@ -116,7 +116,7 @@ class AssistantApplication(ChatCompletion):
                     addon.url,  # type: ignore
                     token_source,
                 ),
-                display_name=addon.name,
+                name_override=addon.name,
             )
 
             tool_descriptions[info.ai_plugin.name_for_model] = (
@@ -158,9 +158,9 @@ class AssistantApplication(ChatCompletion):
         callback = AssistantChainCallback(
             choice,
             {
-                name: info.display_name
+                name: info.name_override
                 for name, info in tools.items()
-                if info.display_name
+                if info.name_override
             },
         )
         finish_reason = FinishReason.STOP
