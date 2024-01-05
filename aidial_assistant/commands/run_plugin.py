@@ -66,7 +66,7 @@ class RunPlugin(Command):
     ) -> ResultObject:
         if name not in self.plugins:
             raise ValueError(
-                f"Unknown addon: {name}. Available addons: {[*self.plugins.keys()]}"
+                f"Unknown addon: {name}. Available addons: {list(self.plugins.keys())}"
             )
 
         plugin = self.plugins[name]

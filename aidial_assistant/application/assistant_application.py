@@ -186,7 +186,7 @@ class AssistantApplication(ChatCompletion):
             client=AsyncAzureOpenAI(
                 azure_endpoint=self.args.openai_conf.api_base,
                 api_key=request.api_key,
-                api_version="2023-12-01-preview",
+                api_version=request.api_version,
             ),
             model_args=chat_args,
         )

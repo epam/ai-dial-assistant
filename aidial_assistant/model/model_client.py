@@ -18,10 +18,7 @@ class Message(BaseModel):
     tool_calls: list[dict[str, Any]] | None = None
 
     def to_openai_message(self) -> dict[str, str]:
-        result = {"role": self.role.value}
-
-        if self.content is not None:
-            result["content"] = self.content
+        result = {"role": self.role.value, "content": self.content}
 
         if self.tool_call_id:
             result["tool_call_id"] = self.tool_call_id

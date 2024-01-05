@@ -79,7 +79,7 @@ class AddonRunner(ToolRunner):
     ) -> ResultObject:
         if name not in self.addons:
             raise AssistantProtocolException(
-                f"Addon '{name}' not found. Available addons: {list(self.addons.keys())}"
+                f"Unknown addon '{name}. Available addons: {list(self.addons.keys())}"
             )
 
         addon = self.addons[name]
