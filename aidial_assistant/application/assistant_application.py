@@ -5,6 +5,7 @@ from aidial_sdk.chat_completion import FinishReason
 from aidial_sdk.chat_completion.base import ChatCompletion
 from aidial_sdk.chat_completion.request import Addon, Message, Request, Role
 from aidial_sdk.chat_completion.response import Response
+from pydantic import BaseModel
 
 from aidial_assistant.application.addons_dialogue_limiter import (
     AddonsDialogueLimiter,
@@ -39,6 +40,11 @@ from aidial_assistant.utils.state import State, parse_history
 logger = logging.getLogger(__name__)
 
 
+class AddonReference(BaseModel):
+    name: str | None
+    url: str
+
+
 def _get_request_args(request: Request) -> dict[str, str]:
     args = {
         "model": request.model,
@@ -51,13 +57,18 @@ def _get_request_args(request: Request) -> dict[str, str]:
     return {k: v for k, v in args.items() if v is not None}
 
 
-def _validate_addons(addons: list[Addon] | None):
+def _validate_addons(addons: list[Addon] | None) -> list[AddonReference]:
+    addon_references: list[AddonReference] = []
     for index, addon in enumerate(addons or []):
         if addon.url is None:
             raise RequestParameterValidationError(
                 f"Missing required addon url at index {index}.",
                 param="addons",
             )
+
+        addon_references.append(AddonReference(name=addon.name, url=addon.url))
+
+    return addon_references
 
 
 def _validate_messages(messages: list[Message]) -> None:
@@ -72,11 +83,6 @@ def _validate_messages(messages: list[Message]) -> None:
         )
 
 
-def _validate_request(request: Request) -> None:
-    _validate_messages(request.messages)
-    _validate_addons(request.addons)
-
-
 class AssistantApplication(ChatCompletion):
     def __init__(self, config_dir: Path):
         self.args = parse_args(config_dir)
@@ -85,7 +91,8 @@ class AssistantApplication(ChatCompletion):
     async def chat_completion(
         self, request: Request, response: Response
     ) -> None:
-        _validate_request(request)
+        _validate_messages(request.messages)
+        addon_references = _validate_addons(request.addons)
         chat_args = self.args.openai_conf.dict() | _get_request_args(request)
 
         model = ModelClient(
@@ -100,27 +107,28 @@ class AssistantApplication(ChatCompletion):
 
         token_source = AddonTokenSource(
             request.headers,
-            [addon.url for addon in request.addons] if request.addons else [],  # type: ignore
+            (addon_reference.url for addon_reference in addon_references),
         )
 
         addons: dict[str, PluginInfo] = {}
         # DIAL Core has own names for addons, so in stages we need to map them to the names used by the user
         addon_name_mapping: dict[str, str] = {}
-        for addon in request.addons or []:
-            addon_url: str = addon.url  # type: ignore
-            info = await get_open_ai_plugin_info(addon_url)
+        for addon_reference in addon_references:
+            info = await get_open_ai_plugin_info(addon_reference.url)
             addons[info.ai_plugin.name_for_model] = PluginInfo(
                 info=info,
                 auth=get_plugin_auth(
                     info.ai_plugin.auth.type,
                     info.ai_plugin.auth.authorization_type,
-                    addon_url,
+                    addon_reference.url,
                     token_source,
                 ),
             )
 
-            if addon.name:
-                addon_name_mapping[info.ai_plugin.name_for_model] = addon.name
+            if addon_reference.name:
+                addon_name_mapping[
+                    info.ai_plugin.name_for_model
+                ] = addon_reference.name
 
         # TODO: Add max_addons_dialogue_tokens as a request parameter
         max_addons_dialogue_tokens = 1000

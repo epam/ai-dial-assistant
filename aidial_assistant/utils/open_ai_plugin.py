@@ -1,5 +1,5 @@
 import logging
-from typing import Mapping
+from typing import Iterable, Mapping
 from urllib.parse import urljoin
 
 from aiocache import cached
@@ -45,7 +45,7 @@ class OpenAIPluginInfo(BaseModel):
 
 
 class AddonTokenSource:
-    def __init__(self, headers: Mapping[str, str], urls: list[str]):
+    def __init__(self, headers: Mapping[str, str], urls: Iterable[str]):
         self.headers = headers
         self.urls = {
             url: f"x-addon-token-{index}" for index, url in enumerate(urls)

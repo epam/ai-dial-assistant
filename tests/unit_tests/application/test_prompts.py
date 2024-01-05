@@ -6,7 +6,7 @@ from aidial_assistant.application.prompts import (
 
 def test_main_best_effort_prompt():
     actual = MAIN_BEST_EFFORT_TEMPLATE.build(
-        tools={"tool name": "Tool description"}
+        addons={"addon name": "Addon description"}
     ).render(
         error="<error>",
         message="<message>",
@@ -19,7 +19,7 @@ def test_main_best_effort_prompt():
 
 === ADDONS ===
 
-* tool name - tool description
+* addon name - addon description
 
 === QUERY ===
 
@@ -38,7 +38,7 @@ Please respond to the query using the available information, and explaining that
 
 def test_main_best_effort_prompt_with_empty_dialogue():
     actual = MAIN_BEST_EFFORT_TEMPLATE.build(
-        tools={"tool name": "Tool description"}
+        addons={"addon name": "Addon description"}
     ).render(
         error="<error>",
         message="<message>",
@@ -51,7 +51,7 @@ def test_main_best_effort_prompt_with_empty_dialogue():
 
 === ADDONS ===
 
-* tool name - tool description
+* addon name - addon description
 
 === QUERY ===
 
