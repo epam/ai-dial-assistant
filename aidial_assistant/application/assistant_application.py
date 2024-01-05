@@ -9,6 +9,7 @@ from aidial_sdk.chat_completion.request import Message as SdkMessage
 from aidial_sdk.chat_completion.request import Request, Role
 from aidial_sdk.chat_completion.response import Response
 from openai.lib.azure import AsyncAzureOpenAI
+from pydantic import BaseModel
 
 from aidial_assistant.application.addons_dialogue_limiter import (
     AddonsDialogueLimiter,
@@ -54,6 +55,11 @@ from aidial_assistant.utils.state import State, parse_history
 logger = logging.getLogger(__name__)
 
 
+class AddonReference(BaseModel):
+    name: str | None
+    url: str
+
+
 def _get_request_args(request: Request) -> dict[str, str]:
     args = {
         "model": request.model,
@@ -64,14 +70,18 @@ def _get_request_args(request: Request) -> dict[str, str]:
     return {k: v for k, v in args.items() if v is not None}
 
 
-def _validate_addons(addons: list[Addon] | None):
-    if addons and any(addon.url is None for addon in addons):
-        for index, addon in enumerate(addons):
-            if addon.url is None:
-                raise RequestParameterValidationError(
-                    f"Missing required addon url at index {index}.",
-                    param="addons",
-                )
+def _validate_addons(addons: list[Addon] | None) -> list[AddonReference]:
+    addon_references: list[AddonReference] = []
+    for index, addon in enumerate(addons or []):
+        if addon.url is None:
+            raise RequestParameterValidationError(
+                f"Missing required addon url at index {index}.",
+                param="addons",
+            )
+
+        addon_references.append(AddonReference(name=addon.name, url=addon.url))
+
+    return addon_references
 
 
 def _validate_messages(messages: list[SdkMessage]) -> None:
@@ -179,7 +189,8 @@ class AssistantApplication(ChatCompletion):
     async def chat_completion(
         self, request: Request, response: Response
     ) -> None:
-        _validate_request(request)
+        _validate_messages(request.messages)
+        addon_references = _validate_addons(request.addons)
         chat_args = _get_request_args(request)
 
         model = ModelClient(
@@ -191,65 +202,69 @@ class AssistantApplication(ChatCompletion):
             model_args=chat_args,
         )
 
-        addons: list[str] = (
-            [addon.url for addon in request.addons] if request.addons else []  # type: ignore
+        token_source = AddonTokenSource(
+            request.headers,
+            (addon_reference.url for addon_reference in addon_references),
         )
-        token_source = AddonTokenSource(request.headers, addons)
 
-        tools: dict[str, PluginInfo] = {}
-        for addon in addons:
-            info = await get_open_ai_plugin_info(addon)
-            tools[info.ai_plugin.name_for_model] = PluginInfo(
+        addons: dict[str, PluginInfo] = {}
+        # DIAL Core has own names for addons, so in stages we need to map them to the names used by the user
+        addon_name_mapping: dict[str, str] = {}
+        for addon_reference in addon_references:
+            info = await get_open_ai_plugin_info(addon_reference.url)
+            addons[info.ai_plugin.name_for_model] = PluginInfo(
                 info=info,
                 auth=get_plugin_auth(
                     info.ai_plugin.auth.type,
                     info.ai_plugin.auth.authorization_type,
-                    addon,
+                    addon_reference.url,
                     token_source,
                 ),
             )
 
+            if addon_reference.name:
+                addon_name_mapping[
+                    info.ai_plugin.name_for_model
+                ] = addon_reference.name
+
         if request.model in {"gpt-4-turbo-1106", "anthropic.claude-v2-1"}:
             await AssistantApplication._run_native_tools_chat(
-                model, tools, request, response
+                model, addons, request, response
             )
         else:
             await AssistantApplication._run_emulated_tools_chat(
-                model, tools, request, response
+                model, addons, request, response
             )
 
     @staticmethod
     async def _run_emulated_tools_chat(
         model: ModelClient,
-        tools: dict[str, PluginInfo],
+        addons: dict[str, PluginInfo],
         request: Request,
         response: Response,
     ):
-        tool_descriptions = {
-            k: (
-                v.info.open_api.info.description
-                or v.info.ai_plugin.description_for_human
-            )
-            for k, v in tools.items()
-        }
-
         # TODO: Add max_addons_dialogue_tokens as a request parameter
         max_addons_dialogue_tokens = 1000
         command_dict: CommandDict = {
             RunPlugin.token(): lambda: RunPlugin(
-                model, tools, max_addons_dialogue_tokens
+                model, addons, max_addons_dialogue_tokens
             ),
             Reply.token(): Reply,
         }
         chain = CommandChain(
             model_client=model, name="ASSISTANT", command_dict=command_dict
         )
+        addon_descriptions = {
+            name: addon.info.open_api.info.description
+            or addon.info.ai_plugin.description_for_human
+            for name, addon in addons.items()
+        }
         history = History(
             assistant_system_message_template=MAIN_SYSTEM_DIALOG_MESSAGE.build(
-                tools=tool_descriptions
+                addons=addon_descriptions
             ),
             best_effort_template=MAIN_BEST_EFFORT_TEMPLATE.build(
-                tools=tool_descriptions
+                addons=addon_descriptions
             ),
             scoped_messages=parse_history(request.messages),
         )
@@ -264,7 +279,7 @@ class AssistantApplication(ChatCompletion):
         choice = response.create_single_choice()
         choice.open()
 
-        callback = AssistantChainCallback(choice)
+        callback = AssistantChainCallback(choice, addon_name_mapping)
         finish_reason = FinishReason.STOP
         try:
             model_request_limiter = AddonsDialogueLimiter(
@@ -289,7 +304,7 @@ class AssistantApplication(ChatCompletion):
     @staticmethod
     async def _run_native_tools_chat(
         model: ModelClient,
-        tools: dict[str, PluginInfo],
+        addons: dict[str, PluginInfo],
         request: Request,
         response: Response,
     ):
@@ -297,9 +312,9 @@ class AssistantApplication(ChatCompletion):
             model,
             [
                 _construct_function(k, v.info.ai_plugin.description_for_human)
-                for k, v in tools.items()
+                for k, v in addons.items()
             ],
-            AddonRunner(model, tools),
+            AddonRunner(model, addons),
         )
 
         choice = response.create_single_choice()

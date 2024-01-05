@@ -17,26 +17,35 @@ from aidial_assistant.utils.state import Invocation
 
 
 class RunPluginArgsCallback(ArgsCallback):
-    def __init__(self, callback: Callable[[str], None]):
+    def __init__(
+        self,
+        callback: Callable[[str], None],
+        addon_name_mapping: dict[str, str],
+    ):
         super().__init__(callback)
+        self.addon_name_mapping = addon_name_mapping
 
     @override
     def on_args(self, args: dict[str, Any]):
         args = args.copy()
         name = args["name"]
         del args["name"]
-        self.callback(name + "(" + json.dumps(args) + ")")
+        self.callback(self.addon_name_mapping.get(name, name) + "(" + json.dumps(args) + ")")
 
 
 class AssistantCommandCallback(CommandCallback):
-    def __init__(self, stage: Stage):
+    def __init__(self, stage: Stage, addon_name_mapping: dict[str, str]):
         self.stage = stage
+        self.addon_name_mapping = addon_name_mapping
+
         self._args_callback = ArgsCallback(self._on_stage_name)
 
     @override
     def on_command(self, command: str):
         if command == RunPlugin.token():
-            self._args_callback = RunPluginArgsCallback(self._on_stage_name)
+            self._args_callback = RunPluginArgsCallback(
+                self._on_stage_name, self.addon_name_mapping
+            )
         else:
             self._on_stage_name(command)
 
@@ -89,15 +98,19 @@ class AssistantResultCallback(ResultCallback):
 
 
 class AssistantChainCallback(ChainCallback):
-    def __init__(self, choice: Choice):
+    def __init__(self, choice: Choice, addon_name_mapping: dict[str, str]):
         self.choice = choice
+        self.addon_name_mapping = addon_name_mapping
+
         self._invocations: list[Invocation] = []
         self._invocation_index: int = -1
         self._discarded_messages: int = 0
 
     @override
     def command_callback(self) -> CommandCallback:
-        return AssistantCommandCallback(self.choice.create_stage())
+        return AssistantCommandCallback(
+            self.choice.create_stage(), self.addon_name_mapping
+        )
 
     @override
     def on_state(self, request: str, response: str):
