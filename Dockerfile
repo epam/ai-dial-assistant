@@ -7,7 +7,7 @@ ARG POETRY_VERSION=1.6.1
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
 
 # Install alpine-sdk to compile some langchain dependencies (numexpr, numpy)
-RUN apk add --no-cache alpine-sdk
+RUN apk add --no-cache alpine-sdk linux-headers
 
 RUN pip install --upgrade pip
 RUN pip install poetry==$POETRY_VERSION
