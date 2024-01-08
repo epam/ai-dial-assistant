@@ -1,6 +1,6 @@
 import json
 from enum import Enum
-from typing import List, TypedDict, Any
+from typing import Any, List, TypedDict
 
 
 class Status(str, Enum):
@@ -18,7 +18,7 @@ class CommandResult(TypedDict):
 
 class CommandInvocation(TypedDict):
     command: str
-    args: dict[str, Any]
+    arguments: dict[str, Any]
 
 
 class Commands(TypedDict):

@@ -1,5 +1,3 @@
-from typing import List
-
 from langchain.tools import APIOperation
 from pydantic.main import BaseModel
 from typing_extensions import override
@@ -40,11 +38,11 @@ class RunPlugin(Command):
     def __init__(
         self,
         model_client: ModelClient,
-        plugins: dict[str, PluginInfo],
+        plugin: PluginInfo,
         max_completion_tokens: int,
     ):
         self.model_client = model_client
-        self.plugins = plugins
+        self.plugin = plugin
         self.max_completion_tokens = max_completion_tokens
 
     @staticmethod
@@ -53,29 +51,24 @@ class RunPlugin(Command):
 
     @override
     async def execute(
-        self, args: List[str], execution_callback: ExecutionCallback
+        self, args: dict[str, str], execution_callback: ExecutionCallback
     ) -> ResultObject:
-        self.assert_arg_count(args, 2)
-        name = args[0]
-        query = args[1]
+        if "query" not in args:
+            raise Exception("query is required")
 
-        return await self._run_plugin(name, query, execution_callback)
+        query = args["query"]
+
+        return await self._run_plugin(query, execution_callback)
 
     async def _run_plugin(
-        self, name: str, query: str, execution_callback: ExecutionCallback
+        self, query: str, execution_callback: ExecutionCallback
     ) -> ResultObject:
-        if name not in self.plugins:
-            raise ValueError(
-                f"Unknown addon: {name}. Available addons: {list(self.plugins.keys())}"
-            )
-
-        plugin = self.plugins[name]
-        info = plugin.info
+        info = self.plugin.info
         ops = collect_operations(info.open_api, info.ai_plugin.api.url)
         api_schema = "\n\n".join([op.to_typescript() for op in ops.values()])  # type: ignore
 
         def create_command(op: APIOperation):
-            return lambda: OpenAPIChatCommand(op, plugin.auth)
+            return lambda: OpenAPIChatCommand(op, self.plugin.auth)
 
         command_dict: dict[str, CommandConstructor] = {}
         for name, op in ops.items():
@@ -99,7 +92,7 @@ class RunPlugin(Command):
 
         chat = CommandChain(
             model_client=self.model_client,
-            name="PLUGIN:" + name,
+            name="PLUGIN:" + self.plugin.info.ai_plugin.name_for_model,
             command_dict=command_dict,
             max_completion_tokens=self.max_completion_tokens,
         )

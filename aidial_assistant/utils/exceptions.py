@@ -30,7 +30,7 @@ def _to_http_exception(e: Exception) -> HTTPException:
         raise HTTPException(
             message=e.message,
             status_code=getattr(e, "status_code") or 500,
-            type=e.type,
+            type=e.type or "runtime_error",
             code=e.code,
             param=e.param,
         )

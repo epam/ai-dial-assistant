@@ -85,7 +85,8 @@ class History:
                 content = commands_to_text(
                     [
                         CommandInvocation(
-                            command=Reply.token(), args=[message.content]
+                            command=Reply.token(),
+                            arguments={"message": message.content},
                         )
                     ]
                 )

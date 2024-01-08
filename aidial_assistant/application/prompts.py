@@ -67,17 +67,12 @@ This message defines the following communication protocol.
 {{request_format}}
 
 ## Commands
-{%- if addons %}
-* run-addon
-This command executes a specified addon to address a one-time task described in natural language.
-Addons do not see current conversation and require all details to be provided in the query to solve the task.
-Arguments:
- - <name> is one of the following addons:
 {%- for name, description in addons.items() %}
-    * {{name}} - {{description | decap}}
-{%- endfor %}
+* {{name}}
+{{description}}
+Arguments:
  - <query> is the query string.
-{%- endif %}
+{%- endfor %}
 {{protocol_footer}}
 """.strip()
 

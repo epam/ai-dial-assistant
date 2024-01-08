@@ -23,27 +23,26 @@ from aidial_assistant.application.prompts import (
     MAIN_SYSTEM_DIALOG_MESSAGE,
 )
 from aidial_assistant.chain.command_chain import CommandChain, CommandDict
-from aidial_assistant.chain.command_result import (
-    CommandInvocation,
-    Commands,
-    Responses,
-)
-from aidial_assistant.chain.history import History, ScopedMessage, MessageScope
+from aidial_assistant.chain.command_result import Commands, Responses
+from aidial_assistant.chain.history import History, MessageScope, ScopedMessage
 from aidial_assistant.commands.reply import Reply
 from aidial_assistant.commands.run_plugin import PluginInfo, RunPlugin
+from aidial_assistant.commands.run_tool import RunTool
 from aidial_assistant.model.model_client import (
     Message,
     ModelClient,
     ReasonLengthException,
-    Tool,
     ToolCall,
-    FunctionCall,
 )
-from aidial_assistant.tools_chain.addon_runner import AddonRunner
 from aidial_assistant.tools_chain.tools_chain import ToolsChain
 from aidial_assistant.utils.exceptions import (
     RequestParameterValidationError,
     unhandled_exception_handler,
+)
+from aidial_assistant.utils.open_ai import (
+    FunctionCall,
+    Tool,
+    construct_function,
 )
 from aidial_assistant.utils.open_ai_plugin import (
     AddonTokenSource,
@@ -102,23 +101,17 @@ def _validate_request(request: Request) -> None:
 
 
 def _construct_function(name: str, description: str) -> Tool:
-    return {
-        "type": "function",
-        "function": {
-            "name": name,
-            "description": description,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "A task written in natural language",
-                    }
-                },
-                "required": ["query"],
-            },
+    return construct_function(
+        name,
+        description,
+        {
+            "query": {
+                "type": "string",
+                "description": "A task written in natural language",
+            }
         },
-    }
+        ["query"],
+    )
 
 
 def _convert_commands_to_tools(
@@ -130,6 +123,12 @@ def _convert_commands_to_tools(
     for scoped_message in scoped_messages:
         message = scoped_message.message
         if scoped_message.scope == MessageScope.INTERNAL:
+            if not message.content:
+                raise RequestParameterValidationError(
+                    "State is broken. Content cannot be empty.",
+                    param="messages",
+                )
+
             if message.role == Role.ASSISTANT:
                 commands: Commands = json.loads(message.content)
                 messages.append(
@@ -140,12 +139,8 @@ def _convert_commands_to_tools(
                                 index=index,
                                 id=str(next_tool_id + index),
                                 function=FunctionCall(
-                                    name=command["args"][0],
-                                    arguments=json.dumps(
-                                        {
-                                            "query": command["args"][1],
-                                        }
-                                    ),
+                                    name=command["command"],
+                                    arguments=json.dumps(command["arguments"]),
                                 ),
                                 type="function",
                             )
@@ -207,19 +202,21 @@ class AssistantApplication(ChatCompletion):
             (addon_reference.url for addon_reference in addon_references),
         )
 
-        addons: dict[str, PluginInfo] = {}
+        addons: list[PluginInfo] = []
         # DIAL Core has own names for addons, so in stages we need to map them to the names used by the user
         addon_name_mapping: dict[str, str] = {}
         for addon_reference in addon_references:
             info = await get_open_ai_plugin_info(addon_reference.url)
-            addons[info.ai_plugin.name_for_model] = PluginInfo(
-                info=info,
-                auth=get_plugin_auth(
-                    info.ai_plugin.auth.type,
-                    info.ai_plugin.auth.authorization_type,
-                    addon_reference.url,
-                    token_source,
-                ),
+            addons.append(
+                PluginInfo(
+                    info=info,
+                    auth=get_plugin_auth(
+                        info.ai_plugin.auth.type,
+                        info.ai_plugin.auth.authorization_type,
+                        addon_reference.url,
+                        token_source,
+                    ),
+                )
             )
 
             if addon_reference.name:
@@ -229,35 +226,40 @@ class AssistantApplication(ChatCompletion):
 
         if request.model in {"gpt-4-turbo-1106", "anthropic.claude-v2-1"}:
             await AssistantApplication._run_native_tools_chat(
-                model, addons, request, response
+                model, addons, addon_name_mapping, request, response
             )
         else:
             await AssistantApplication._run_emulated_tools_chat(
-                model, addons, request, response
+                model, addons, addon_name_mapping, request, response
             )
 
     @staticmethod
     async def _run_emulated_tools_chat(
         model: ModelClient,
-        addons: dict[str, PluginInfo],
+        addons: list[PluginInfo],
+        addon_name_mapping: dict[str, str],
         request: Request,
         response: Response,
     ):
         # TODO: Add max_addons_dialogue_tokens as a request parameter
         max_addons_dialogue_tokens = 1000
+
+        def create_command(addon: PluginInfo):
+            return lambda: RunPlugin(model, addon, max_addons_dialogue_tokens)
+
         command_dict: CommandDict = {
-            RunPlugin.token(): lambda: RunPlugin(
-                model, addons, max_addons_dialogue_tokens
-            ),
-            Reply.token(): Reply,
+            addon.info.ai_plugin.name_for_model: create_command(addon)
+            for addon in addons
         }
+        command_dict[Reply.token()] = Reply
+
         chain = CommandChain(
             model_client=model, name="ASSISTANT", command_dict=command_dict
         )
         addon_descriptions = {
-            name: addon.info.open_api.info.description
+            addon.info.ai_plugin.name_for_model: addon.info.open_api.info.description
             or addon.info.ai_plugin.description_for_human
-            for name, addon in addons.items()
+            for addon in addons
         }
         history = History(
             assistant_system_message_template=MAIN_SYSTEM_DIALOG_MESSAGE.build(
@@ -304,23 +306,32 @@ class AssistantApplication(ChatCompletion):
     @staticmethod
     async def _run_native_tools_chat(
         model: ModelClient,
-        addons: dict[str, PluginInfo],
+        addons: list[PluginInfo],
+        addon_name_mapping: dict[str, str],
         request: Request,
         response: Response,
     ):
-        chain = ToolsChain(
-            model,
-            [
-                _construct_function(k, v.info.ai_plugin.description_for_human)
-                for k, v in addons.items()
-            ],
-            AddonRunner(model, addons),
-        )
+        tools: list[Tool] = [
+            _construct_function(
+                addon.info.ai_plugin.name_for_model,
+                addon.info.ai_plugin.description_for_human,
+            )
+            for addon in addons
+        ]
+
+        def create_command(addon: PluginInfo):
+            return lambda: RunTool(model, addon)
+
+        command_dict: CommandDict = {
+            addon.info.ai_plugin.name_for_model: create_command(addon)
+            for addon in addons
+        }
+        chain = ToolsChain(model, tools, command_dict)
 
         choice = response.create_single_choice()
         choice.open()
 
-        callback = AssistantChainCallback(choice)
+        callback = AssistantChainCallback(choice, addon_name_mapping)
         finish_reason = FinishReason.STOP
         messages = _convert_commands_to_tools(parse_history(request.messages))
         try:

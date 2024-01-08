@@ -1,10 +1,12 @@
 from abc import ABC
-from typing import Any, AsyncIterator, List, TypedDict
+from typing import Any, AsyncIterator, List
 
 from aidial_sdk.chat_completion import Role
 from aidial_sdk.utils.merge_chunks import merge
 from openai import AsyncOpenAI
 from pydantic import BaseModel
+
+from aidial_assistant.utils.open_ai import ToolCall, Usage
 
 
 class ReasonLengthException(Exception):
@@ -15,7 +17,7 @@ class Message(BaseModel):
     role: Role
     content: str | None = None
     tool_call_id: str | None = None
-    tool_calls: list[dict[str, Any]] | None = None
+    tool_calls: list[ToolCall] | None = None
 
     def to_openai_message(self) -> dict[str, str]:
         result = {"role": self.role.value, "content": self.content}
@@ -39,40 +41,6 @@ class Message(BaseModel):
     @classmethod
     def assistant(cls, content):
         return cls(role=Role.ASSISTANT, content=content)
-
-
-class Usage(TypedDict):
-    prompt_tokens: int
-    completion_tokens: int
-
-
-class Parameters(TypedDict):
-    type: str
-    properties: dict[str, Any]
-    required: list[str]
-
-
-class Function(TypedDict):
-    name: str
-    description: str
-    parameters: Parameters
-
-
-class Tool(TypedDict):
-    type: str
-    function: Function
-
-
-class FunctionCall(TypedDict):
-    name: str
-    arguments: str
-
-
-class ToolCall(TypedDict):
-    index: int
-    id: str
-    type: str
-    function: FunctionCall
 
 
 class ExtraResultsCallback:
@@ -112,8 +80,8 @@ class ModelClient(ABC):
             **self.model_args,
             extra_body=kwargs,
             stream=True,
-            messages=[message.to_openai_message() for message in messages],
-        )
+            messages=[message.to_openai_message() for message in messages],  # type: ignore
+        )  # type: ignore
 
         finish_reason_length = False
         tool_calls_chunks = []

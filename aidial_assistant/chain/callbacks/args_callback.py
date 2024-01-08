@@ -1,5 +1,4 @@
-import json
-from typing import Callable, Any
+from typing import Callable
 
 
 class ArgsCallback:
@@ -8,6 +7,11 @@ class ArgsCallback:
     def __init__(self, callback: Callable[[str], None]):
         self.callback = callback
 
-    def on_args(self, args: dict[str, Any]):
-        """Called when the argument dict is constructed"""
-        self.callback("(" + json.dumps(args) + ")")
+    def on_args_start(self):
+        self.callback("(")
+
+    def on_args_chunk(self, chunk: str):
+        self.callback(chunk)
+
+    def on_args_end(self):
+        self.callback(")")

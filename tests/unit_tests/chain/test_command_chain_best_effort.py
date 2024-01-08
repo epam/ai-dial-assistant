@@ -1,6 +1,7 @@
 import json
 from unittest.mock import MagicMock, Mock, call
 
+import httpx
 import pytest
 from aidial_sdk.chat_completion import Role
 from jinja2 import Template
@@ -28,7 +29,11 @@ LIMIT_EXCEEDED_ERROR = "<limit exceeded error>"
 TEST_COMMAND_NAME = "<test command>"
 TEST_COMMAND_OUTPUT = "<test command result>"
 TEST_COMMAND_REQUEST = json.dumps(
-    {"commands": [{"command": TEST_COMMAND_NAME, "args": ["test_arg"]}]}
+    {
+        "commands": [
+            {"command": TEST_COMMAND_NAME, "arguments": {"arg": "value"}}
+        ]
+    }
 )
 TEST_COMMAND_RESPONSE = json.dumps(
     {"responses": [{"status": "SUCCESS", "response": TEST_COMMAND_OUTPUT}]}
@@ -154,7 +159,18 @@ async def test_no_tokens_for_tools():
     model_client = Mock(spec=ModelClient)
     model_client.agenerate.side_effect = [
         to_async_string(TEST_COMMAND_REQUEST),
-        BadRequestError(NO_TOKENS_ERROR),
+        BadRequestError(
+            message=NO_TOKENS_ERROR,
+            response=httpx.Response(
+                request=httpx.Request("GET", "http://localhost"),
+                status_code=400,
+            ),
+            body={
+                "type": "<error type>",
+                "code": "<error code>",
+                "param": "<param>",
+            },
+        ),
         to_async_string(BEST_EFFORT_ANSWER),
     ]
     test_command = Mock(spec=Command)

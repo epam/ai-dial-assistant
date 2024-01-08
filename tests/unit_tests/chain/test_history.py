@@ -125,6 +125,6 @@ def test_protocol_messages_with_system_message():
         Message.system(f"system message={system_message}"),
         Message.user(user_message),
         Message.assistant(
-            f'{{"commands": [{{"command": "reply", "args": ["{assistant_message}"]}}]}}'
+            f'{{"commands": [{{"command": "reply", "arguments": {{"message": "{assistant_message}"}}}}]}}'
         ),
     ]

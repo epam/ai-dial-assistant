@@ -8,8 +8,9 @@ FIRST_USER_MESSAGE = "<first user message>"
 SECOND_USER_MESSAGE = "<first user message>"
 FIRST_ASSISTANT_MESSAGE = "<first assistant message>"
 SECOND_ASSISTANT_MESSAGE = "<second assistant message>"
-FIRST_REQUEST = "<first request>"
-SECOND_REQUEST = "<second request>"
+FIRST_REQUEST = '{"commands": [{"command": "run-addon", "args": ["<addon1 name>", "<addon1 query>"]}]}'
+FIRST_REQUEST_FIXED = '{"commands": [{"command": "<addon1 name>", "arguments": {"query": "<addon1 query>"}}]}'
+SECOND_REQUEST = '{"commands": [{"command": "<addon2 name>", "arguments": {"query": "<addon2 query>"}}]}'
 FIRST_RESPONSE = "<first response>"
 SECOND_RESPONSE = "<second response>"
 
@@ -48,7 +49,7 @@ def test_parse_history():
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
-            message=ModelMessage.assistant(FIRST_REQUEST),
+            message=ModelMessage.assistant(FIRST_REQUEST_FIXED),
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
