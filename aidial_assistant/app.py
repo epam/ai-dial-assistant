@@ -22,9 +22,7 @@ config_dir = Path(os.getenv("CONFIG_DIR", "aidial_assistant/configs"))
 logging.config.dictConfig(get_log_config(log_level))
 
 telemetry_config = TelemetryConfig(
-    service_name="aidial-assistant",
-    tracing=TracingConfig(),
-    metrics=MetricsConfig(),
+    service_name="aidial-assistant", tracing=TracingConfig()
 )
 app = DIALApp(telemetry_config=telemetry_config)
 app.add_chat_completion("assistant", AssistantApplication(config_dir))
