@@ -5,9 +5,9 @@ from pathlib import Path
 
 from aidial_sdk import DIALApp
 from aidial_sdk.telemetry.types import (
+    MetricsConfig,
     TelemetryConfig,
     TracingConfig,
-    MetricsConfig,
 )
 from starlette.responses import Response
 
