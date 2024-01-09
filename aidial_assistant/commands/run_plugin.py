@@ -75,6 +75,8 @@ class RunPlugin(Command):
             # The function is necessary to capture the current value of op.
             # Otherwise, only first op will be used for all commands
             command_dict[name] = create_command(op)
+        if Reply.token() in command_dict:
+            Exception(f"Operation with name '{Reply.token()}' is not allowed.")
 
         command_dict[Reply.token()] = Reply
 

@@ -251,6 +251,12 @@ class AssistantApplication(ChatCompletion):
             addon.info.ai_plugin.name_for_model: create_command(addon)
             for addon in addons
         }
+        if Reply.token() in command_dict:
+            RequestParameterValidationError(
+                f"Addon with name '{Reply.token()}' is not allowed for model {request.model}.",
+                param="addons",
+            )
+
         command_dict[Reply.token()] = Reply
 
         chain = CommandChain(
