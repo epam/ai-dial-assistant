@@ -43,7 +43,7 @@ class Command(ABC):
         pass
 
     async def execute(
-        self, args: List[Any], execution_callback: ExecutionCallback
+        self, args: dict[str, Any], execution_callback: ExecutionCallback
     ) -> ResultObject:
         raise Exception(f"Command {self} isn't implemented")
 
@@ -60,7 +60,7 @@ class Command(ABC):
 class FinalCommand(Command, ABC):
     @override
     async def execute(
-        self, args: List[Any], execution_callback: ExecutionCallback
+        self, args: dict[str, Any], execution_callback: ExecutionCallback
     ) -> ResultObject:
         raise Exception(
             f"Internal error: command {self} is final and can't be executed"

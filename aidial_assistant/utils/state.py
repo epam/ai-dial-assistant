@@ -1,7 +1,12 @@
+import json
 from typing import TypedDict
 
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 
+from aidial_assistant.chain.command_result import (
+    CommandInvocation,
+    commands_to_text,
+)
 from aidial_assistant.chain.history import MessageScope, ScopedMessage
 from aidial_assistant.model.model_client import Message as ModelMessage
 
@@ -32,6 +37,23 @@ def _get_invocations(custom_content: CustomContent | None) -> list[Invocation]:
     return invocations
 
 
+def _normalize_commands(string: str) -> str:
+    commands = json.loads(string)
+    result: list[CommandInvocation] = []
+
+    for command in commands["commands"]:
+        command_name = command["command"]
+        if command_name in ("run-addon", "run-plugin"):
+            args = command["args"]
+            result.append(
+                CommandInvocation(command=args[0], arguments={"query": args[1]})
+            )
+        else:
+            result.append(command)
+
+    return commands_to_text(result)
+
+
 def parse_history(history: list[Message]) -> list[ScopedMessage]:
     messages: list[ScopedMessage] = []
     for message in history:
@@ -41,7 +63,9 @@ def parse_history(history: list[Message]) -> list[ScopedMessage]:
                 messages.append(
                     ScopedMessage(
                         scope=MessageScope.INTERNAL,
-                        message=ModelMessage.assistant(invocation["request"]),
+                        message=ModelMessage.assistant(
+                            _normalize_commands(invocation["request"])
+                        ),
                     )
                 )
                 messages.append(

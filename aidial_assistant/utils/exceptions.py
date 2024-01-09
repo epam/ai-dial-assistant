@@ -2,7 +2,7 @@ import logging
 from functools import wraps
 
 from aidial_sdk import HTTPException
-from openai import OpenAIError
+from openai import APIError
 
 logger = logging.getLogger(__name__)
 
@@ -26,18 +26,14 @@ def _to_http_exception(e: Exception) -> HTTPException:
             param=e.param,
         )
 
-    if isinstance(e, OpenAIError):
-        http_status = e.http_status or 500
-        if e.error:
-            return HTTPException(
-                message=e.error.message,
-                status_code=http_status,
-                type=e.error.type,
-                code=e.error.code,
-                param=e.error.param,
-            )
-
-        return HTTPException(message=str(e), status_code=http_status)
+    if isinstance(e, APIError):
+        raise HTTPException(
+            message=e.message,
+            status_code=getattr(e, "status_code") or 500,
+            type=e.type or "runtime_error",
+            code=e.code,
+            param=e.param,
+        )
 
     return HTTPException(
         message=str(e), status_code=500, type="internal_server_error"

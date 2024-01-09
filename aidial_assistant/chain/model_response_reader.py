@@ -46,18 +46,12 @@ class CommandReader:
         except (TypeError, KeyError) as e:
             raise AssistantProtocolException(f"Cannot parse command name: {e}")
 
-    async def parse_args(self) -> AsyncIterator[JsonNode]:
+    async def parse_args(self) -> JsonObject:
         try:
-            args = await self.node.get("args")
-            # HACK: model not always passes args as an array
-            if isinstance(args, JsonArray):
-                async for arg in array_node(args):
-                    yield arg
-            else:
-                yield args
+            return object_node(await self.node.get("arguments"))
         except (TypeError, KeyError) as e:
             raise AssistantProtocolException(
-                f"Cannot parse command args array: {e}"
+                f"Cannot parse command arguments array: {e}"
             )
 
 

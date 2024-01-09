@@ -1,7 +1,9 @@
-from unittest import mock
+from typing import Any
 from unittest.mock import Mock, call
 
 import pytest
+from openai import AsyncOpenAI
+from pydantic import BaseModel
 
 from aidial_assistant.model.model_client import (
     ExtraResultsCallback,
@@ -9,26 +11,32 @@ from aidial_assistant.model.model_client import (
     ModelClient,
     ReasonLengthException,
 )
+from aidial_assistant.utils.open_ai import Usage
 from aidial_assistant.utils.text import join_string
-from tests.utils.async_helper import to_async_iterator
+from tests.utils.async_helper import to_awaitable_iterator
 
-API_METHOD = "openai.ChatCompletion.acreate"
 MODEL_ARGS = {"model": "args"}
-BUFFER_SIZE = 321
 
 
-@mock.patch(API_METHOD)
+class Chunk(BaseModel):
+    choices: list[dict[str, Any]]
+    statistics: dict[str, int] | None = None
+    usage: Usage | None = None
+
+
 @pytest.mark.asyncio
-async def test_discarded_messages(api):
-    model_client = ModelClient(MODEL_ARGS, BUFFER_SIZE)
-    api.return_value = to_async_iterator(
+async def test_discarded_messages():
+    openai_client = Mock(spec=AsyncOpenAI)
+    openai_client.chat = Mock()
+    openai_client.chat.completions.create.return_value = to_awaitable_iterator(
         [
-            {
-                "choices": [{"delta": {"content": ""}}],
-                "statistics": {"discarded_messages": 2},
-            }
+            Chunk(
+                choices=[{"delta": {"content": ""}}],
+                statistics={"discarded_messages": 2},
+            )
         ]
     )
+    model_client = ModelClient(openai_client, MODEL_ARGS)
     extra_results_callback = Mock(spec=ExtraResultsCallback)
 
     await join_string(model_client.agenerate([], extra_results_callback))
@@ -38,39 +46,41 @@ async def test_discarded_messages(api):
     ]
 
 
-@mock.patch(API_METHOD)
 @pytest.mark.asyncio
-async def test_content(api):
-    model_client = ModelClient(MODEL_ARGS, BUFFER_SIZE)
-    api.return_value = to_async_iterator(
+async def test_content():
+    openai_client = Mock(spec=AsyncOpenAI)
+    openai_client.chat = Mock()
+    openai_client.chat.completions.create.return_value = to_awaitable_iterator(
         [
-            {"choices": [{"delta": {"content": "one, "}}]},
-            {"choices": [{"delta": {"content": "two, "}}]},
-            {"choices": [{"delta": {"content": "three"}}]},
+            Chunk(choices=[{"delta": {"content": "one, "}}]),
+            Chunk(choices=[{"delta": {"content": "two, "}}]),
+            Chunk(choices=[{"delta": {"content": "three"}}]),
         ]
     )
+    model_client = ModelClient(openai_client, MODEL_ARGS)
 
     assert await join_string(model_client.agenerate([])) == "one, two, three"
 
 
-@mock.patch(API_METHOD)
 @pytest.mark.asyncio
-async def test_reason_length_with_usage(api):
-    model_client = ModelClient(MODEL_ARGS, BUFFER_SIZE)
-    api.return_value = to_async_iterator(
+async def test_reason_length_with_usage():
+    openai_client = Mock(spec=AsyncOpenAI)
+    openai_client.chat = Mock()
+    openai_client.chat.completions.create.return_value = to_awaitable_iterator(
         [
-            {"choices": [{"delta": {"content": "text"}}]},
-            {
-                "choices": [
+            Chunk(choices=[{"delta": {"content": "text"}}]),
+            Chunk(
+                choices=[
                     {"delta": {"content": ""}, "finish_reason": "length"}  # type: ignore
                 ]
-            },
-            {
-                "choices": [{"delta": {"content": ""}}],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 2},
-            },
+            ),
+            Chunk(
+                choices=[{"delta": {"content": ""}}],
+                usage={"prompt_tokens": 1, "completion_tokens": 2},
+            ),
         ]
     )
+    model_client = ModelClient(openai_client, MODEL_ARGS)
 
     with pytest.raises(ReasonLengthException):
         async for chunk in model_client.agenerate([]):
@@ -80,20 +90,23 @@ async def test_reason_length_with_usage(api):
     assert model_client.total_completion_tokens == 2
 
 
-@mock.patch(API_METHOD)
 @pytest.mark.asyncio
-async def test_api_args(api):
-    model_client = ModelClient(MODEL_ARGS, BUFFER_SIZE)
-    api.return_value = to_async_iterator([])
+async def test_api_args():
+    openai_client = Mock(spec=AsyncOpenAI)
+    openai_client.chat = Mock()
+    openai_client.chat.completions.create.return_value = to_awaitable_iterator(
+        []
+    )
+    model_client = ModelClient(openai_client, MODEL_ARGS)
     messages = [
         Message.system(content="a"),
         Message.user(content="b"),
         Message.assistant(content="c"),
     ]
 
-    await join_string(model_client.agenerate(messages))
+    await join_string(model_client.agenerate(messages, extra="args"))
 
-    assert api.call_args_list == [
+    assert openai_client.chat.completions.create.call_args_list == [
         call(
             messages=[
                 {"role": "system", "content": "a"},
@@ -101,5 +114,7 @@ async def test_api_args(api):
                 {"role": "assistant", "content": "c"},
             ],
             **MODEL_ARGS,
+            stream=True,
+            extra_body={"extra": "args"},
         )
     ]
