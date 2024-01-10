@@ -4,7 +4,6 @@ from pathlib import Path
 
 from aidial_sdk import DIALApp
 from aidial_sdk.telemetry.types import TelemetryConfig, TracingConfig
-from starlette.responses import Response
 
 from aidial_assistant.utils.log_config import get_log_config
 
