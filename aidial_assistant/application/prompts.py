@@ -72,6 +72,7 @@ This message defines the following communication protocol.
 {{description}}
 Arguments:
  - <query> is the query string.
+
 {%- endfor %}
 {{protocol_footer}}
 """.strip()
@@ -97,6 +98,7 @@ API_DESCRIPTION:
 * {{command_name}}
 Arguments:
  - <JSON dict according to the API Schema>
+
 {%- endfor %}
 {{protocol_footer}}
 """.strip()
