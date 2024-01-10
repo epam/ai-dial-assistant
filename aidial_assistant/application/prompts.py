@@ -69,11 +69,10 @@ This message defines the following communication protocol.
 ## Commands
 {%- for name, description in addons.items() %}
 * {{name}}
-{{description}}
+{{description.strip()}}
 Arguments:
- - <query> is the query string.
-
-{%- endfor %}
+ - <query> is the query string written in natural language.
+{% endfor %}
 {{protocol_footer}}
 """.strip()
 
@@ -98,8 +97,7 @@ API_DESCRIPTION:
 * {{command_name}}
 Arguments:
  - <JSON dict according to the API Schema>
-
-{%- endfor %}
+{% endfor %}
 {{protocol_footer}}
 """.strip()
 
