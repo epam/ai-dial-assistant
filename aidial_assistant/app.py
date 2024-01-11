@@ -12,16 +12,19 @@ from aidial_assistant.application.assistant_application import (
 )
 from aidial_assistant.utils.log_config import get_log_config
 
-log_level = os.getenv("LOG_LEVEL", "INFO")
-config_dir = Path(os.getenv("CONFIG_DIR", "aidial_assistant/configs"))
+LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+CONFIG_DIR: str = Path(os.getenv("CONFIG_DIR", "aidial_assistant/configs"))
+OTLP_EXPORT_ENABLED: bool = (
+    os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") is not None
+)
 
-logging.config.dictConfig(get_log_config(log_level))
+logging.config.dictConfig(get_log_config(LOG_LEVEL))
 
 telemetry_config = TelemetryConfig(
-    service_name="aidial-assistant", tracing=TracingConfig(otlp_export=True)
+    service_name="aidial-assistant", tracing=TracingConfig(oltp_export=OTLP_EXPORT_ENABLED)
 )
 app = DIALApp(telemetry_config=telemetry_config)
-app.add_chat_completion("assistant", AssistantApplication(config_dir))
+app.add_chat_completion("assistant", AssistantApplication(CONFIG_DIR))
 
 
 @app.get("/healthcheck/status200")
