@@ -12,6 +12,7 @@ from aidial_assistant.commands.base import (
     ExecutionCallback,
     ResultObject,
     TextResult,
+    get_required_field,
 )
 from aidial_assistant.commands.open_api import OpenAPIChatCommand
 from aidial_assistant.commands.plugin_callback import PluginChainCallback
@@ -69,10 +70,7 @@ class RunTool(Command):
     async def execute(
         self, args: dict[str, Any], execution_callback: ExecutionCallback
     ) -> ResultObject:
-        if "query" not in args:
-            raise Exception("query is required")
-
-        query = args["query"]
+        query = get_required_field(args, "query")
 
         ops = collect_operations(
             self.addon.info.open_api, self.addon.info.ai_plugin.api.url

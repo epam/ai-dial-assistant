@@ -16,6 +16,7 @@ from aidial_assistant.commands.base import (
     ExecutionCallback,
     ResultObject,
     TextResult,
+    get_required_field,
 )
 from aidial_assistant.commands.open_api import OpenAPIChatCommand
 from aidial_assistant.commands.plugin_callback import PluginChainCallback
@@ -53,10 +54,7 @@ class RunPlugin(Command):
     async def execute(
         self, args: dict[str, str], execution_callback: ExecutionCallback
     ) -> ResultObject:
-        if "query" not in args:
-            raise Exception("query is required")
-
-        query = args["query"]
+        query = get_required_field(args, "query")
 
         return await self._run_plugin(query, execution_callback)
 

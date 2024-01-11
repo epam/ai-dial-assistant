@@ -48,8 +48,9 @@ The commands are invoked by the system on the user's behalf.
 _PROTOCOL_FOOTER = """
 * reply
 The command delivers the final response to the user.
+
 Arguments:
-- `message` is a string containing the final and complete result for the user.
+  - 'message' is a string containing the final and complete result for the user.
 
 Your goal is to answer user questions. Use relevant commands when they help to achieve the goal.
 
@@ -74,8 +75,9 @@ This message defines the following communication protocol.
 {%- for name, description in addons.items() %}
 * {{name}}
 {{description.strip()}}
+
 Arguments:
-- `query` is a query string written in natural language.
+  - 'query' is a query written in natural language.
 {% endfor %}
 {{protocol_footer}}
 """.strip()
@@ -99,8 +101,9 @@ API_DESCRIPTION:
 ## Commands
 {%- for command_name in command_names %}
 * {{command_name}}
+
 Arguments:
- - <JSON dict according to the API Schema>
+  - <JSON dict according to the API Schema>
 {% endfor %}
 {{protocol_footer}}
 """.strip()
