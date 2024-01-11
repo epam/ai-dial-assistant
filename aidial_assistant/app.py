@@ -21,7 +21,7 @@ otlp_export_enabled: bool = (
 )
 telemetry_config = TelemetryConfig(
     service_name="aidial-assistant",
-    tracing=TracingConfig(oltp_export=otlp_export_enabled),
+    tracing=TracingConfig(oltp_export=otlp_export_enabled, logging=True),
 )
 
 app = DIALApp(telemetry_config=telemetry_config)
