@@ -59,7 +59,7 @@ class ModelClient(ABC):
 
         finish_reason_length = False
         tool_calls_chunks: list[list[dict[str, Any]]] = []
-        async for chunk in model_result:  # type: ignore
+        async for chunk in model_result:
             all_values = chunk.dict()
             usage: Usage | None = all_values.get("usage")
             if usage:
