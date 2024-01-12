@@ -143,6 +143,8 @@ class ToolsChain:
                 if len(dialogue) == 0 or e.code == "429":
                     raise
 
+                # If the dialog size exceeds model context size then remove last message block
+                # and try again without tools.
                 dialogue = dialogue[:-last_message_block_length]
                 async for chunk in self.model.agenerate(
                     messages + dialogue, tool_calls_callback
