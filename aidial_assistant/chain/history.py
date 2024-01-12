@@ -53,7 +53,7 @@ class History:
             scope = scoped_message.scope
 
             if index == 0:
-                if message["role"] == "role":
+                if message["role"] == "system":
                     messages.append(
                         system_message(
                             self.assistant_system_message_template.render(
