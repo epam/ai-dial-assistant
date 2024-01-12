@@ -1,46 +1,18 @@
 from abc import ABC
 from typing import Any, AsyncIterator, List
 
-from aidial_sdk.chat_completion import Role
 from aidial_sdk.utils.merge_chunks import merge
 from openai import AsyncOpenAI
-from pydantic import BaseModel
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionMessageToolCallParam,
+)
 
-from aidial_assistant.utils.open_ai import ToolCall, Usage
+from aidial_assistant.utils.open_ai import Usage
 
 
 class ReasonLengthException(Exception):
     pass
-
-
-class Message(BaseModel):
-    role: Role
-    content: str | None = None
-    tool_call_id: str | None = None
-    tool_calls: list[ToolCall] | None = None
-
-    def to_openai_message(self) -> dict[str, str]:
-        result = {"role": self.role.value, "content": self.content}
-
-        if self.tool_call_id:
-            result["tool_call_id"] = self.tool_call_id
-
-        if self.tool_calls:
-            result["tool_calls"] = self.tool_calls
-
-        return result
-
-    @classmethod
-    def system(cls, content):
-        return cls(role=Role.SYSTEM, content=content)
-
-    @classmethod
-    def user(cls, content):
-        return cls(role=Role.USER, content=content)
-
-    @classmethod
-    def assistant(cls, content):
-        return cls(role=Role.ASSISTANT, content=content)
 
 
 class ExtraResultsCallback:
@@ -50,7 +22,9 @@ class ExtraResultsCallback:
     def on_prompt_tokens(self, prompt_tokens: int):
         pass
 
-    def on_tool_calls(self, tool_calls: list[ToolCall]):
+    def on_tool_calls(
+        self, tool_calls: list[ChatCompletionMessageToolCallParam]
+    ):
         pass
 
 
@@ -72,7 +46,7 @@ class ModelClient(ABC):
 
     async def agenerate(
         self,
-        messages: List[Message],
+        messages: List[ChatCompletionMessageParam],
         extra_results_callback: ExtraResultsCallback | None = None,
         **kwargs,
     ) -> AsyncIterator[str]:
@@ -80,14 +54,14 @@ class ModelClient(ABC):
             **self.model_args,
             extra_body=kwargs,
             stream=True,
-            messages=[message.to_openai_message() for message in messages],  # type: ignore
-        )  # type: ignore
+            messages=messages,
+        )
 
         finish_reason_length = False
-        tool_calls_chunks = []
+        tool_calls_chunks: list[list[dict[str, Any]]] = []
         async for chunk in model_result:  # type: ignore
-            chunk = chunk.dict()
-            usage: Usage | None = chunk.get("usage")
+            all_values = chunk.dict()
+            usage: Usage | None = all_values.get("usage")
             if usage:
                 prompt_tokens = usage["prompt_tokens"]
                 self._total_prompt_tokens += prompt_tokens
@@ -96,7 +70,7 @@ class ModelClient(ABC):
                     extra_results_callback.on_prompt_tokens(prompt_tokens)
 
             if extra_results_callback:
-                discarded_messages: int | None = chunk.get(
+                discarded_messages: int | None = all_values.get(
                     "statistics", {}
                 ).get("discarded_messages")
                 if discarded_messages is not None:
@@ -104,29 +78,37 @@ class ModelClient(ABC):
                         discarded_messages
                     )
 
-            choice = chunk["choices"][0]
-            delta = choice["delta"]
-            text = delta.get("content")
-            if text:
-                yield text
+            choice = chunk.choices[0]
+            delta = choice.delta
+            if delta.content:
+                yield delta.content
 
-            tool_calls_chunk = delta.get("tool_calls")
-            if tool_calls_chunk:
-                tool_calls_chunks.append(tool_calls_chunk)
+            if delta.tool_calls:
+                tool_calls_chunks.append(
+                    [
+                        tool_call_chunk.dict()
+                        for tool_call_chunk in delta.tool_calls
+                    ]
+                )
 
-            if choice.get("finish_reason") == "length":
+            if choice.finish_reason == "length":
                 finish_reason_length = True
 
         if finish_reason_length:
             raise ReasonLengthException()
 
         if extra_results_callback and tool_calls_chunks:
-            tool_calls: list[ToolCall] = merge(*tool_calls_chunks)
+            tool_calls: list[ChatCompletionMessageToolCallParam] = [
+                ChatCompletionMessageToolCallParam(**tool_call)
+                for tool_call in merge(*tool_calls_chunks)
+            ]
             extra_results_callback.on_tool_calls(tool_calls)
 
     # TODO: Use a dedicated endpoint for counting tokens.
     #  This request may throw an error if the number of tokens is too large.
-    async def count_tokens(self, messages: list[Message]) -> int:
+    async def count_tokens(
+        self, messages: list[ChatCompletionMessageParam]
+    ) -> int:
         class PromptTokensCallback(ExtraResultsCallback):
             def __init__(self):
                 self.token_count: int | None = None
@@ -147,7 +129,7 @@ class ModelClient(ABC):
 
     # TODO: Use a dedicated endpoint for discarded_messages.
     async def get_discarded_messages(
-        self, messages: list[Message], max_prompt_tokens: int
+        self, messages: list[ChatCompletionMessageParam], max_prompt_tokens: int
     ) -> int:
         class DiscardedMessagesCallback(ExtraResultsCallback):
             def __init__(self):

@@ -66,6 +66,9 @@ class CommandObject(TypedDict):
     args: List[str]
 
 
+CommandConstructor = Callable[[], Command]
+
+
 T = TypeVar("T")
 
 

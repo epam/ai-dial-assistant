@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, Mock, call
 
 import httpx
 import pytest
-from aidial_sdk.chat_completion import Role
 from jinja2 import Template
 from openai import BadRequestError
 
@@ -16,7 +15,12 @@ from aidial_assistant.chain.command_chain import (
 )
 from aidial_assistant.chain.history import History, ScopedMessage
 from aidial_assistant.commands.base import Command, TextResult
-from aidial_assistant.model.model_client import Message, ModelClient
+from aidial_assistant.model.model_client import ModelClient
+from aidial_assistant.utils.open_ai import (
+    assistant_message,
+    system_message,
+    user_message,
+)
 from tests.utils.async_helper import to_async_string, to_async_strings
 
 SYSTEM_MESSAGE = "<system message>"
@@ -46,10 +50,8 @@ TEST_HISTORY = History(
         "user_message={{message}}, error={{error}}, dialogue={{dialogue}}"
     ),
     scoped_messages=[
-        ScopedMessage(
-            message=Message(role=Role.SYSTEM, content=SYSTEM_MESSAGE)
-        ),
-        ScopedMessage(message=Message(role=Role.USER, content=USER_MESSAGE)),
+        ScopedMessage(message=system_message(SYSTEM_MESSAGE)),
+        ScopedMessage(message=user_message(USER_MESSAGE)),
     ],
 )
 
@@ -81,14 +83,14 @@ async def test_model_doesnt_support_protocol():
     assert model_client.agenerate.call_args_list == [
         call(
             [
-                Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
-                Message.user(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
+                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                user_message(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(
             [
-                Message.system(SYSTEM_MESSAGE),
-                Message.user(USER_MESSAGE),
+                system_message(SYSTEM_MESSAGE),
+                user_message(USER_MESSAGE),
             ]
         ),
     ]
@@ -116,8 +118,8 @@ async def test_model_partially_supports_protocol():
     result_callback = Mock(spec=ResultCallback)
     chain_callback.result_callback.return_value = result_callback
     succeeded_dialogue = [
-        Message.assistant(TEST_COMMAND_REQUEST),
-        Message.user(TEST_COMMAND_RESPONSE),
+        assistant_message(TEST_COMMAND_REQUEST),
+        user_message(TEST_COMMAND_RESPONSE),
     ]
 
     await command_chain.run_chat(history=TEST_HISTORY, callback=chain_callback)
@@ -131,22 +133,22 @@ async def test_model_partially_supports_protocol():
     assert model_client.agenerate.call_args_list == [
         call(
             [
-                Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
-                Message.user(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
+                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                user_message(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(
             [
-                Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
-                Message.user(USER_MESSAGE),
-                Message.assistant(TEST_COMMAND_REQUEST),
-                Message.user(f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"),
+                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                user_message(USER_MESSAGE),
+                assistant_message(TEST_COMMAND_REQUEST),
+                user_message(f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(
             [
-                Message.system(SYSTEM_MESSAGE),
-                Message.user(
+                system_message(SYSTEM_MESSAGE),
+                user_message(
                     f"user_message={USER_MESSAGE}, error={FAILED_PROTOCOL_ERROR}, dialogue={succeeded_dialogue}"
                 ),
             ]
@@ -196,22 +198,22 @@ async def test_no_tokens_for_tools():
     assert model_client.agenerate.call_args_list == [
         call(
             [
-                Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
-                Message.user(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
+                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                user_message(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(
             [
-                Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
-                Message.user(USER_MESSAGE),
-                Message.assistant(TEST_COMMAND_REQUEST),
-                Message.user(f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"),
+                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                user_message(USER_MESSAGE),
+                assistant_message(TEST_COMMAND_REQUEST),
+                user_message(f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(
             [
-                Message.system(SYSTEM_MESSAGE),
-                Message.user(
+                system_message(SYSTEM_MESSAGE),
+                user_message(
                     f"user_message={USER_MESSAGE}, error={NO_TOKENS_ERROR}, dialogue=[]"
                 ),
             ]
@@ -254,14 +256,14 @@ async def test_model_request_limit_exceeded():
     assert model_client.agenerate.call_args_list == [
         call(
             [
-                Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
-                Message.user(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
+                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                user_message(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(
             [
-                Message.system(SYSTEM_MESSAGE),
-                Message.user(
+                system_message(SYSTEM_MESSAGE),
+                user_message(
                     f"user_message={USER_MESSAGE}, error={LIMIT_EXCEEDED_ERROR}, dialogue=[]"
                 ),
             ]
@@ -270,16 +272,16 @@ async def test_model_request_limit_exceeded():
     assert model_request_limiter.verify_limit.call_args_list == [
         call(
             [
-                Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
-                Message.user(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
+                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                user_message(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
         call(
             [
-                Message.system(f"system_prefix={SYSTEM_MESSAGE}"),
-                Message.user(USER_MESSAGE),
-                Message.assistant(TEST_COMMAND_REQUEST),
-                Message.user(f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"),
+                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                user_message(USER_MESSAGE),
+                assistant_message(TEST_COMMAND_REQUEST),
+                user_message(f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"),
             ]
         ),
     ]

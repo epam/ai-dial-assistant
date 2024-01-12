@@ -1,6 +1,7 @@
+from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel
 
-from aidial_assistant.model.model_client import Message
+from aidial_assistant.utils.open_ai import assistant_message, user_message
 
 
 class DialogueTurn(BaseModel):
@@ -10,11 +11,11 @@ class DialogueTurn(BaseModel):
 
 class Dialogue:
     def __init__(self):
-        self.messages: list[Message] = []
+        self.messages: list[ChatCompletionMessageParam] = []
 
     def append(self, dialogue_turn: DialogueTurn):
-        self.messages.append(Message.assistant(dialogue_turn.assistant_message))
-        self.messages.append(Message.user(dialogue_turn.user_message))
+        self.messages.append(assistant_message(dialogue_turn.assistant_message))
+        self.messages.append(user_message(dialogue_turn.user_message))
 
     def pop(self):
         self.messages.pop()

@@ -1,4 +1,14 @@
-from typing import Any, TypedDict
+from typing import TypedDict
+
+from openai.types.chat import (
+    ChatCompletionAssistantMessageParam,
+    ChatCompletionMessageToolCallParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionToolMessageParam,
+    ChatCompletionToolParam,
+    ChatCompletionUserMessageParam,
+)
+from openai.types.shared_params import FunctionDefinition
 
 
 class Usage(TypedDict):
@@ -9,53 +19,55 @@ class Usage(TypedDict):
 class Property(TypedDict, total=False):
     type: str
     description: str
-    default: Any
 
 
-class Parameters(TypedDict):
-    type: str
-    properties: dict[str, Property]
-    required: list[str]
-
-
-class Function(TypedDict):
-    name: str
-    description: str
-    parameters: Parameters
-
-
-class Tool(TypedDict):
-    type: str
-    function: Function
-
-
-class FunctionCall(TypedDict):
-    name: str
-    arguments: str
-
-
-class ToolCall(TypedDict):
-    index: int
-    id: str
-    type: str
-    function: FunctionCall
-
-
-def construct_function(
+def construct_tool(
     name: str,
     description: str,
     properties: dict[str, Property],
     required: list[str],
-) -> Tool:
-    return {
-        "type": "function",
-        "function": {
-            "name": name,
-            "description": description,
-            "parameters": {
+) -> ChatCompletionToolParam:
+    return ChatCompletionToolParam(
+        type="function",
+        function=FunctionDefinition(
+            name=name,
+            description=description,
+            parameters={
                 "type": "object",
                 "properties": properties,
                 "required": required,
             },
-        },
-    }
+        ),
+    )
+
+
+def system_message(content: str) -> ChatCompletionSystemMessageParam:
+    return ChatCompletionSystemMessageParam(role="system", content=content)
+
+
+def user_message(content: str) -> ChatCompletionUserMessageParam:
+    return ChatCompletionUserMessageParam(role="user", content=content)
+
+
+def assistant_message(content: str) -> ChatCompletionAssistantMessageParam:
+    return ChatCompletionAssistantMessageParam(
+        role="assistant", content=content
+    )
+
+
+def tool_calls_message(
+    tool_calls: list[ChatCompletionMessageToolCallParam],
+) -> ChatCompletionAssistantMessageParam:
+    return ChatCompletionAssistantMessageParam(
+        role="assistant", tool_calls=tool_calls
+    )
+
+
+def tool_message(
+    content: str, tool_call_id: str
+) -> ChatCompletionToolMessageParam:
+    return ChatCompletionToolMessageParam(
+        role="tool",
+        content=content,
+        tool_call_id=tool_call_id,
+    )

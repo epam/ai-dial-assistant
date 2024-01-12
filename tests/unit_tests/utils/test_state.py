@@ -1,7 +1,7 @@
 from aidial_sdk.chat_completion import CustomContent, Message, Role
 
 from aidial_assistant.chain.history import MessageScope, ScopedMessage
-from aidial_assistant.model.model_client import Message as ModelMessage
+from aidial_assistant.utils.open_ai import assistant_message, user_message
 from aidial_assistant.utils.state import parse_history
 
 FIRST_USER_MESSAGE = "<first user message>"
@@ -45,34 +45,34 @@ def test_parse_history():
     assert parse_history(messages) == [
         ScopedMessage(
             scope=MessageScope.USER,
-            message=ModelMessage.user(FIRST_USER_MESSAGE),
+            message=user_message(FIRST_USER_MESSAGE),
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
-            message=ModelMessage.assistant(FIRST_REQUEST_FIXED),
+            message=assistant_message(FIRST_REQUEST_FIXED),
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
-            message=ModelMessage.user(FIRST_RESPONSE),
+            message=user_message(FIRST_RESPONSE),
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
-            message=ModelMessage.assistant(SECOND_REQUEST),
+            message=assistant_message(SECOND_REQUEST),
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
-            message=ModelMessage.user(content=SECOND_RESPONSE),
+            message=user_message(content=SECOND_RESPONSE),
         ),
         ScopedMessage(
             scope=MessageScope.USER,
-            message=ModelMessage.assistant(FIRST_ASSISTANT_MESSAGE),
+            message=assistant_message(FIRST_ASSISTANT_MESSAGE),
         ),
         ScopedMessage(
             scope=MessageScope.USER,
-            message=ModelMessage.user(SECOND_USER_MESSAGE),
+            message=user_message(SECOND_USER_MESSAGE),
         ),
         ScopedMessage(
             scope=MessageScope.USER,
-            message=ModelMessage.assistant(SECOND_ASSISTANT_MESSAGE),
+            message=assistant_message(SECOND_ASSISTANT_MESSAGE),
         ),
     ]

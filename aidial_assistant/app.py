@@ -8,7 +8,6 @@ from aidial_sdk.telemetry.types import TelemetryConfig, TracingConfig
 from aidial_assistant.utils.log_config import get_log_config
 
 log_level = os.getenv("LOG_LEVEL", "INFO")
-config_dir = Path(os.getenv("CONFIG_DIR", "aidial_assistant/configs"))
 
 logging.config.dictConfig(get_log_config(log_level))
 
@@ -22,7 +21,13 @@ from aidial_assistant.application.assistant_application import (  # noqa: E402
     AssistantApplication,
 )
 
+config_dir = Path(os.getenv("CONFIG_DIR", "aidial_assistant/configs"))
+tools_supporting_deployments: set[str] = set(
+    os.getenv(
+        "TOOLS_SUPPORTING_DEPLOYMENTS", "gpt-4-turbo-1106,anthropic.claude-v2-1"
+    ).split(",")
+)
 app.add_chat_completion(
     "assistant",
-    AssistantApplication(config_dir),
+    AssistantApplication(config_dir, tools_supporting_deployments),
 )

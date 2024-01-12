@@ -8,7 +8,12 @@ from aidial_assistant.chain.command_result import (
     commands_to_text,
 )
 from aidial_assistant.chain.history import MessageScope, ScopedMessage
-from aidial_assistant.model.model_client import Message as ModelMessage
+from aidial_assistant.utils.exceptions import RequestParameterValidationError
+from aidial_assistant.utils.open_ai import (
+    assistant_message,
+    system_message,
+    user_message,
+)
 
 
 class Invocation(TypedDict):
@@ -37,7 +42,8 @@ def _get_invocations(custom_content: CustomContent | None) -> list[Invocation]:
     return invocations
 
 
-def _normalize_commands(string: str) -> str:
+def _convert_old_commands(string: str) -> str:
+    """Converts old commands to new format."""
     commands = json.loads(string)
     result: list[CommandInvocation] = []
 
@@ -63,24 +69,32 @@ def parse_history(history: list[Message]) -> list[ScopedMessage]:
                 messages.append(
                     ScopedMessage(
                         scope=MessageScope.INTERNAL,
-                        message=ModelMessage.assistant(
-                            _normalize_commands(invocation["request"])
+                        message=assistant_message(
+                            _convert_old_commands(invocation["request"])
                         ),
                     )
                 )
                 messages.append(
                     ScopedMessage(
                         scope=MessageScope.INTERNAL,
-                        message=ModelMessage.user(invocation["response"]),
+                        message=user_message(invocation["response"]),
                     )
                 )
 
-        messages.append(
-            ScopedMessage(
-                message=ModelMessage(
-                    role=message.role, content=message.content or ""
-                )
+            messages.append(
+                ScopedMessage(message=assistant_message(message.content or ""))
             )
-        )
+        elif message.role == Role.USER:
+            messages.append(
+                ScopedMessage(message=user_message(message.content or ""))
+            )
+        elif message.role == Role.SYSTEM:
+            messages.append(
+                ScopedMessage(message=system_message(message.content or ""))
+            )
+        else:
+            raise RequestParameterValidationError(
+                f"Role {message.role} is not supported.", param="messages"
+            )
 
     return messages

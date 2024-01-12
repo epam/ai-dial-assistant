@@ -7,11 +7,15 @@ from pydantic import BaseModel
 
 from aidial_assistant.model.model_client import (
     ExtraResultsCallback,
-    Message,
     ModelClient,
     ReasonLengthException,
 )
-from aidial_assistant.utils.open_ai import Usage
+from aidial_assistant.utils.open_ai import (
+    Usage,
+    assistant_message,
+    system_message,
+    user_message,
+)
 from aidial_assistant.utils.text import join_string
 from tests.utils.async_helper import to_awaitable_iterator
 
@@ -76,7 +80,7 @@ async def test_reason_length_with_usage():
             ),
             Chunk(
                 choices=[{"delta": {"content": ""}}],
-                usage={"prompt_tokens": 1, "completion_tokens": 2},
+                usage=Usage(prompt_tokens=1, completion_tokens=2),
             ),
         ]
     )
@@ -99,9 +103,9 @@ async def test_api_args():
     )
     model_client = ModelClient(openai_client, MODEL_ARGS)
     messages = [
-        Message.system(content="a"),
-        Message.user(content="b"),
-        Message.assistant(content="c"),
+        system_message("a"),
+        user_message("b"),
+        assistant_message("c"),
     ]
 
     await join_string(model_client.agenerate(messages, extra="args"))

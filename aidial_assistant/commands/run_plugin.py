@@ -22,11 +22,11 @@ from aidial_assistant.commands.open_api import OpenAPIChatCommand
 from aidial_assistant.commands.plugin_callback import PluginChainCallback
 from aidial_assistant.commands.reply import Reply
 from aidial_assistant.model.model_client import (
-    Message,
     ModelClient,
     ReasonLengthException,
 )
 from aidial_assistant.open_api.operation_selector import collect_operations
+from aidial_assistant.utils.open_ai import user_message
 from aidial_assistant.utils.open_ai_plugin import OpenAIPluginInfo
 
 
@@ -87,7 +87,7 @@ class RunPlugin(Command):
             best_effort_template=ADDON_BEST_EFFORT_TEMPLATE.build(
                 api_schema=api_schema
             ),
-            scoped_messages=[ScopedMessage(message=Message.user(query))],
+            scoped_messages=[ScopedMessage(message=user_message(query))],
         )
 
         chat = CommandChain(
@@ -100,6 +100,7 @@ class RunPlugin(Command):
         callback = PluginChainCallback(execution_callback)
         try:
             await chat.run_chat(history, callback)
-            return TextResult(callback.result)
         except ReasonLengthException:
-            return TextResult(callback.result)
+            pass
+
+        return TextResult(callback.result)
