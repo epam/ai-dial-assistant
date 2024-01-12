@@ -42,7 +42,7 @@ def _construct_property(p: APIPropertyBase) -> dict[str, Any]:
     return {k: v for k, v in parameter.items() if v is not None}
 
 
-def _construct_function(op: APIOperation) -> ChatCompletionToolParam:
+def _construct_tool(op: APIOperation) -> ChatCompletionToolParam:
     properties = {}
     required = []
     for p in op.properties:
@@ -85,7 +85,7 @@ class RunTool(Command):
         def create_command_tool(op: APIOperation) -> CommandTool:
             return lambda: OpenAPIChatCommand(
                 op, self.plugin.auth
-            ), _construct_function(op)
+            ), _construct_tool(op)
 
         command_tool_dict: CommandToolDict = {
             name: create_command_tool(op) for name, op in ops.items()
