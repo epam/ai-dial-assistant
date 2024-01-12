@@ -3,6 +3,7 @@ from unittest.mock import Mock, call
 
 import pytest
 from openai import AsyncOpenAI
+from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 from pydantic import BaseModel
 
 from aidial_assistant.model.model_client import (
@@ -22,8 +23,18 @@ from tests.utils.async_helper import to_awaitable_iterator
 MODEL_ARGS = {"model": "args"}
 
 
+class Delta(BaseModel):
+    content: str
+    tool_calls: list[ChoiceDeltaToolCall] | None = None
+
+
+class Choice(BaseModel):
+    delta: Delta
+    finish_reason: str | None = None
+
+
 class Chunk(BaseModel):
-    choices: list[dict[str, Any]]
+    choices: list[Choice]
     statistics: dict[str, int] | None = None
     usage: Usage | None = None
 
@@ -35,7 +46,7 @@ async def test_discarded_messages():
     openai_client.chat.completions.create.return_value = to_awaitable_iterator(
         [
             Chunk(
-                choices=[{"delta": {"content": ""}}],
+                choices=[Choice(delta=Delta(content=""))],
                 statistics={"discarded_messages": 2},
             )
         ]
@@ -56,9 +67,9 @@ async def test_content():
     openai_client.chat = Mock()
     openai_client.chat.completions.create.return_value = to_awaitable_iterator(
         [
-            Chunk(choices=[{"delta": {"content": "one, "}}]),
-            Chunk(choices=[{"delta": {"content": "two, "}}]),
-            Chunk(choices=[{"delta": {"content": "three"}}]),
+            Chunk(choices=[Choice(delta=Delta(content="one, "))]),
+            Chunk(choices=[Choice(delta=Delta(content="two, "))]),
+            Chunk(choices=[Choice(delta=Delta(content="three"))]),
         ]
     )
     model_client = ModelClient(openai_client, MODEL_ARGS)
@@ -72,14 +83,14 @@ async def test_reason_length_with_usage():
     openai_client.chat = Mock()
     openai_client.chat.completions.create.return_value = to_awaitable_iterator(
         [
-            Chunk(choices=[{"delta": {"content": "text"}}]),
+            Chunk(choices=[Choice(delta=Delta(content="text"))]),
             Chunk(
                 choices=[
-                    {"delta": {"content": ""}, "finish_reason": "length"}  # type: ignore
+                    Choice(delta=Delta(content=""), finish_reason="length")
                 ]
             ),
             Chunk(
-                choices=[{"delta": {"content": ""}}],
+                choices=[Choice(delta=Delta(content=""))],
                 usage=Usage(prompt_tokens=1, completion_tokens=2),
             ),
         ]
