@@ -43,12 +43,20 @@ def _get_invocations(custom_content: CustomContent | None) -> list[Invocation]:
 
 
 def _convert_old_commands(string: str) -> str:
-    """Converts old commands to new format."""
+    """Converts old commands to new format.
+    Previously saved conversations with assistant will stop working if state is not updated.
+
+    Old format:
+    {"commands": [{"command": "run-addon", "args": ["<addon-name>", "<query>"]}]}
+    New format:
+    {"commands": [{"command": "<addon-name>", "arguments": {"query": "<query>"}}]}
+    """
     commands = json.loads(string)
     result: list[CommandInvocation] = []
 
     for command in commands["commands"]:
         command_name = command["command"]
+        # run-addon was previously called run-plugin
         if command_name in ("run-addon", "run-plugin"):
             args = command["args"]
             result.append(

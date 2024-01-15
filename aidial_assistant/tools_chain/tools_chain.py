@@ -119,9 +119,9 @@ class ToolCallsCallback(ExtraResultsCallback):
 
 
 class ToolsChain:
-    def __init__(self, model: ModelClient, command_tool_dict: CommandToolDict):
+    def __init__(self, model: ModelClient, commands: CommandToolDict):
         self.model = model
-        self.command_tool_dict = command_tool_dict
+        self.commands = commands
 
     async def run_chat(
         self,
@@ -131,7 +131,7 @@ class ToolsChain:
         result_callback = callback.result_callback()
         dialogue: list[ChatCompletionMessageParam] = []
         last_message_block_length = 0
-        tools = [tool for _, tool in self.command_tool_dict.values()]
+        tools = [tool for _, tool in self.commands.values()]
         while True:
             tool_calls_callback = ToolCallsCallback()
             try:
@@ -167,12 +167,12 @@ class ToolsChain:
             last_message_block_length = len(result_messages) + 1
 
     def _create_command(self, name: str) -> Command:
-        if name not in self.command_tool_dict:
+        if name not in self.commands:
             raise AssistantProtocolException(
-                f"The tool '{name}' is expected to be one of {list(self.command_tool_dict.keys())}"
+                f"The tool '{name}' is expected to be one of {list(self.commands.keys())}"
             )
 
-        command, _ = self.command_tool_dict[name]
+        command, _ = self.commands[name]
 
         return command()
 

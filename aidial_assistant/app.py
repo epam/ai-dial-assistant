@@ -23,9 +23,7 @@ from aidial_assistant.application.assistant_application import (  # noqa: E402
 
 config_dir = Path(os.getenv("CONFIG_DIR", "aidial_assistant/configs"))
 tools_supporting_deployments: set[str] = set(
-    os.getenv(
-        "TOOLS_SUPPORTING_DEPLOYMENTS", "gpt-4-turbo-1106,anthropic.claude-v2-1"
-    ).split(",")
+    os.getenv("TOOLS_SUPPORTING_DEPLOYMENTS", "").split(",")
 )
 app.add_chat_completion(
     "assistant",

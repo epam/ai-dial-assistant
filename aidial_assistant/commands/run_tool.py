@@ -87,11 +87,11 @@ class RunTool(Command):
                 op, self.plugin.auth
             ), _construct_tool(op)
 
-        command_tool_dict: CommandToolDict = {
+        commands: CommandToolDict = {
             name: create_command_tool(op) for name, op in ops.items()
         }
 
-        chain = ToolsChain(self.model, command_tool_dict)
+        chain = ToolsChain(self.model, commands)
 
         messages = [
             system_message(self.plugin.info.ai_plugin.description_for_model),

@@ -262,11 +262,11 @@ class AssistantApplication(ChatCompletion):
                 plugin.info.ai_plugin.description_for_human,
             )
 
-        command_tool_dict: CommandToolDict = {
+        commands: CommandToolDict = {
             plugin.info.ai_plugin.name_for_model: create_command_tool(plugin)
             for plugin in plugins
         }
-        chain = ToolsChain(model, command_tool_dict)
+        chain = ToolsChain(model, commands)
 
         choice = response.create_single_choice()
         choice.open()

@@ -60,8 +60,8 @@ class ModelClient(ABC):
         finish_reason_length = False
         tool_calls_chunks: list[list[dict[str, Any]]] = []
         async for chunk in model_result:
-            all_values = chunk.dict()
-            usage: Usage | None = all_values.get("usage")
+            chunk_dict = chunk.dict()
+            usage: Usage | None = chunk_dict.get("usage")
             if usage:
                 prompt_tokens = usage["prompt_tokens"]
                 self._total_prompt_tokens += prompt_tokens
@@ -70,7 +70,7 @@ class ModelClient(ABC):
                     extra_results_callback.on_prompt_tokens(prompt_tokens)
 
             if extra_results_callback:
-                discarded_messages: int | None = all_values.get(
+                discarded_messages: int | None = chunk_dict.get(
                     "statistics", {}
                 ).get("discarded_messages")
                 if discarded_messages is not None:
