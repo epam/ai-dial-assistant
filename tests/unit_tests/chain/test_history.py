@@ -4,7 +4,12 @@ import pytest
 from jinja2 import Template
 
 from aidial_assistant.chain.history import History, MessageScope, ScopedMessage
-from aidial_assistant.model.model_client import Message, ModelClient
+from aidial_assistant.model.model_client import ModelClient
+from aidial_assistant.utils.open_ai import (
+    assistant_message,
+    system_message,
+    user_message,
+)
 
 TRUNCATION_TEST_DATA = [
     (0, [0, 1, 2, 3, 4, 5, 6]),
@@ -28,18 +33,19 @@ async def test_history_truncation(
         assistant_system_message_template=Template(""),
         best_effort_template=Template(""),
         scoped_messages=[
-            ScopedMessage(message=Message.system(content="a")),
-            ScopedMessage(message=Message.user(content="b")),
-            ScopedMessage(message=Message.system(content="c")),
+            ScopedMessage(message=system_message("a")),
+            ScopedMessage(message=user_message("b")),
+            ScopedMessage(message=system_message("c")),
             ScopedMessage(
-                message=Message.assistant(content="d"),
+                message=assistant_message("d"),
                 scope=MessageScope.INTERNAL,
             ),
             ScopedMessage(
-                message=Message.user(content="e"), scope=MessageScope.INTERNAL
+                message=user_message(content="e"),
+                scope=MessageScope.INTERNAL,
             ),
-            ScopedMessage(message=Message.assistant(content="f")),
-            ScopedMessage(message=Message.user(content="g")),
+            ScopedMessage(message=assistant_message("f")),
+            ScopedMessage(message=user_message("g")),
         ],
     )
 
@@ -64,8 +70,8 @@ async def test_truncation_overflow():
         assistant_system_message_template=Template(""),
         best_effort_template=Template(""),
         scoped_messages=[
-            ScopedMessage(message=Message.system(content="a")),
-            ScopedMessage(message=Message.user(content="b")),
+            ScopedMessage(message=system_message("a")),
+            ScopedMessage(message=user_message("b")),
         ],
     )
 
@@ -87,9 +93,10 @@ async def test_truncation_with_incorrect_message_sequence():
         best_effort_template=Template(""),
         scoped_messages=[
             ScopedMessage(
-                message=Message.user(content="a"), scope=MessageScope.INTERNAL
+                message=user_message("a"),
+                scope=MessageScope.INTERNAL,
             ),
-            ScopedMessage(message=Message.user(content="b")),
+            ScopedMessage(message=user_message("b")),
         ],
     )
 
@@ -106,25 +113,25 @@ async def test_truncation_with_incorrect_message_sequence():
 
 
 def test_protocol_messages_with_system_message():
-    system_message = "<system message>"
-    user_message = "<user message>"
-    assistant_message = "<assistant message>"
+    system_content = "<system message>"
+    user_content = "<user message>"
+    assistant_content = "<assistant message>"
     history = History(
         assistant_system_message_template=Template(
             "system message={{system_prefix}}"
         ),
         best_effort_template=Template(""),
         scoped_messages=[
-            ScopedMessage(message=Message.system(system_message)),
-            ScopedMessage(message=Message.user(user_message)),
-            ScopedMessage(message=Message.assistant(assistant_message)),
+            ScopedMessage(message=system_message(system_content)),
+            ScopedMessage(message=user_message(user_content)),
+            ScopedMessage(message=assistant_message(assistant_content)),
         ],
     )
 
     assert history.to_protocol_messages() == [
-        Message.system(f"system message={system_message}"),
-        Message.user(user_message),
-        Message.assistant(
-            f'{{"commands": [{{"command": "reply", "args": ["{assistant_message}"]}}]}}'
+        system_message(f"system message={system_content}"),
+        user_message(user_content),
+        assistant_message(
+            f'{{"commands": [{{"command": "reply", "arguments": {{"message": "{assistant_content}"}}}}]}}'
         ),
     ]

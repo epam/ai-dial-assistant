@@ -1,14 +1,13 @@
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Callable, Tuple, cast
+from typing import Any, AsyncIterator, Tuple, cast
 
-from aidial_sdk.chat_completion.request import Role
-from openai import InvalidRequestError
+from openai import BadRequestError
 
 from aidial_assistant.application.prompts import ENFORCE_JSON_FORMAT_TEMPLATE
+from aidial_assistant.chain.callbacks.args_callback import ArgsCallback
 from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
-from aidial_assistant.chain.callbacks.command_callback import CommandCallback
 from aidial_assistant.chain.callbacks.result_callback import ResultCallback
 from aidial_assistant.chain.command_result import (
     CommandInvocation,
@@ -24,13 +23,20 @@ from aidial_assistant.chain.model_response_reader import (
     CommandsReader,
     skip_to_json_start,
 )
-from aidial_assistant.commands.base import Command, FinalCommand
+from aidial_assistant.commands.base import (
+    Command,
+    CommandConstructor,
+    FinalCommand,
+)
 from aidial_assistant.json_stream.chunked_char_stream import ChunkedCharStream
 from aidial_assistant.json_stream.exceptions import JsonParsingException
-from aidial_assistant.json_stream.json_node import JsonNode
-from aidial_assistant.json_stream.json_parser import JsonParser
+from aidial_assistant.json_stream.json_object import JsonObject
+from aidial_assistant.json_stream.json_parser import JsonParser, string_node
 from aidial_assistant.json_stream.json_string import JsonString
-from aidial_assistant.model.model_client import Message, ModelClient
+from aidial_assistant.model.model_client import (
+    ChatCompletionMessageParam,
+    ModelClient,
+)
 from aidial_assistant.utils.stream import CumulativeStream
 
 logger = logging.getLogger(__name__)
@@ -41,7 +47,6 @@ DEFAULT_MAX_RETRY_COUNT = 3
 # Later, the upper limit will be provided by the DIAL Core (proxy).
 MAX_MODEL_COMPLETION_CHUNKS = 32000
 
-CommandConstructor = Callable[[], Command]
 CommandDict = dict[str, CommandConstructor]
 
 
@@ -51,7 +56,7 @@ class LimitExceededException(Exception):
 
 class ModelRequestLimiter(ABC):
     @abstractmethod
-    async def verify_limit(self, messages: list[Message]):
+    async def verify_limit(self, messages: list[ChatCompletionMessageParam]):
         pass
 
 
@@ -74,13 +79,13 @@ class CommandChain:
         )
         self.max_retry_count = max_retry_count
 
-    def _log_message(self, role: Role, content: str):
-        logger.debug(f"[{self.name}] {role.value}: {content}")
+    def _log_message(self, role: str, content: str | None):
+        logger.debug(f"[{self.name}] {role}: {content or ''}")
 
-    def _log_messages(self, messages: list[Message]):
+    def _log_messages(self, messages: list[ChatCompletionMessageParam]):
         if logger.isEnabledFor(logging.DEBUG):
             for message in messages:
-                self._log_message(message.role, message.content)
+                self._log_message(message["role"], message.get("content"))
 
     async def run_chat(
         self,
@@ -112,9 +117,9 @@ class CommandChain:
                 else history.to_user_messages()
             )
             await self._generate_result(messages, callback)
-        except (InvalidRequestError, LimitExceededException) as e:
+        except (BadRequestError, LimitExceededException) as e:
             if dialogue.is_empty() or (
-                isinstance(e, InvalidRequestError) and e.code == "429"
+                isinstance(e, BadRequestError) and e.code == "429"
             ):
                 raise
 
@@ -128,7 +133,7 @@ class CommandChain:
     async def _run_with_protocol_failure_retries(
         self,
         callback: ChainCallback,
-        messages: list[Message],
+        messages: list[ChatCompletionMessageParam],
         model_request_limiter: ModelRequestLimiter | None = None,
     ) -> DialogueTurn | None:
         last_error: Exception | None = None
@@ -186,8 +191,8 @@ class CommandChain:
                         )
                     )
                 finally:
-                    self._log_message(Role.ASSISTANT, chunk_stream.buffer)
-        except (InvalidRequestError, LimitExceededException) as e:
+                    self._log_message("assistant", chunk_stream.buffer)
+        except (BadRequestError, LimitExceededException) as e:
             if last_error:
                 # Retries can increase the prompt size, which may lead to token overflow.
                 # Thus, if the original error was a protocol error, it should be thrown instead.
@@ -210,11 +215,11 @@ class CommandChain:
         async for invocation in request_reader.parse_invocations():
             command_name = await invocation.parse_name()
             command = self._create_command(command_name)
-            args = invocation.parse_args()
+            args = await invocation.parse_args()
             if isinstance(command, FinalCommand):
                 if len(responses) > 0:
                     continue
-                message = await anext(args)
+                message = string_node(await args.get("message"))
                 await CommandChain._to_result(
                     message
                     if isinstance(message, JsonString)
@@ -237,46 +242,43 @@ class CommandChain:
     def _create_command(self, name: str) -> Command:
         if name not in self.command_dict:
             raise AssistantProtocolException(
-                f"The command '{name}' is expected to be one of {[*self.command_dict.keys()]}"
+                f"The command '{name}' is expected to be one of {list(self.command_dict.keys())}"
             )
 
         return self.command_dict[name]()
 
     async def _generate_result(
-        self, messages: list[Message], callback: ChainCallback
+        self,
+        messages: list[ChatCompletionMessageParam],
+        callback: ChainCallback,
     ):
         stream = self.model_client.agenerate(messages)
 
         await CommandChain._to_result(stream, callback.result_callback())
 
     @staticmethod
-    def _reinforce_json_format(messages: list[Message]) -> list[Message]:
-        last_message = messages[-1]
-        return messages[:-1] + [
-            Message(
-                role=last_message.role,
-                content=ENFORCE_JSON_FORMAT_TEMPLATE.render(
-                    response=last_message.content
-                ),
-            ),
-        ]
+    def _reinforce_json_format(
+        messages: list[ChatCompletionMessageParam],
+    ) -> list[ChatCompletionMessageParam]:
+        last_message = messages[-1].copy()
+        last_message["content"] = ENFORCE_JSON_FORMAT_TEMPLATE.render(
+            response=last_message.get("content", "")
+        )
+        return messages[:-1] + [last_message]
 
     @staticmethod
     async def _to_args(
-        args: AsyncIterator[JsonNode], callback: CommandCallback
-    ) -> AsyncIterator[Any]:
-        args_callback = callback.args_callback()
+        args: JsonObject, args_callback: ArgsCallback
+    ) -> dict[str, Any]:
         args_callback.on_args_start()
-        async for arg in args:
-            arg_callback = args_callback.arg_callback()
-            arg_callback.on_arg_start()
-            result = ""
-            async for chunk in arg.to_chunks():
-                arg_callback.on_arg(chunk)
-                result += chunk
-            arg_callback.on_arg_end()
-            yield json.loads(result)
+        result = ""
+        async for chunk in args.to_chunks():
+            args_callback.on_args_chunk(chunk)
+            result += chunk
+        parsed_args = json.loads(result)
         args_callback.on_args_end()
+
+        return parsed_args
 
     @staticmethod
     async def _to_result(stream: AsyncIterator[str], callback: ResultCallback):
@@ -294,20 +296,17 @@ class CommandChain:
     async def _execute_command(
         name: str,
         command: Command,
-        args: AsyncIterator[JsonNode],
+        args: JsonObject,
         chain_callback: ChainCallback,
     ) -> CommandResult:
         try:
             with chain_callback.command_callback() as command_callback:
                 command_callback.on_command(name)
-                args_list = [
-                    arg
-                    async for arg in CommandChain._to_args(
-                        args, command_callback
-                    )
-                ]
                 response = await command.execute(
-                    args_list, command_callback.execution_callback()
+                    await CommandChain._to_args(
+                        args, command_callback.args_callback()
+                    ),
+                    command_callback.execution_callback(),
                 )
                 command_callback.on_result(response)
 

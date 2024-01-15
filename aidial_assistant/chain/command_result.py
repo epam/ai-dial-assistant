@@ -1,6 +1,6 @@
 import json
 from enum import Enum
-from typing import List, TypedDict
+from typing import Any, List, TypedDict
 
 
 class Status(str, Enum):
@@ -18,12 +18,20 @@ class CommandResult(TypedDict):
 
 class CommandInvocation(TypedDict):
     command: str
-    args: list[str]
+    arguments: dict[str, Any]
+
+
+class Commands(TypedDict):
+    commands: list[CommandInvocation]
+
+
+class Responses(TypedDict):
+    responses: list[CommandResult]
 
 
 def responses_to_text(responses: List[CommandResult]) -> str:
-    return json.dumps({"responses": responses})
+    return json.dumps(Responses(responses=responses))
 
 
 def commands_to_text(commands: List[CommandInvocation]) -> str:
-    return json.dumps({"commands": commands})
+    return json.dumps(Commands(commands=commands))
