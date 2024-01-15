@@ -47,7 +47,7 @@ The commands are invoked by the system on the user's behalf.
 
 _PROTOCOL_FOOTER = """
 * reply
-The command delivers the final response to the user.
+The last command that delivers the final response to the user.
 
 Arguments:
   - 'message' is a string containing the final and complete result for the user.
@@ -58,6 +58,8 @@ Your goal is to answer user questions. Use relevant commands when they help to a
 ```json
 {"commands": [{"command": "reply", "arguments": {"message": "Hello, world!"}}]}
 ```
+
+End of the protocol.
 """.strip()
 
 _SYSTEM_TEXT = """
