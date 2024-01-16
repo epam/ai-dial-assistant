@@ -19,7 +19,6 @@ tools_supporting_deployments: set[str] = set(
 logging.config.dictConfig(get_log_config(log_level))
 
 telemetry_config = TelemetryConfig(
-    service_name="aidial-assistant",
     tracing=TracingConfig(otlp_export=otlp_export_enabled, logging=True),
 )
 app = DIALApp(telemetry_config=telemetry_config)
