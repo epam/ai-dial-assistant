@@ -1,17 +1,17 @@
 from enum import Enum
 
-from aidial_sdk.chat_completion import Role
 from jinja2 import Template
+from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel
 
-from aidial_assistant.application.prompts import ENFORCE_JSON_FORMAT_TEMPLATE
 from aidial_assistant.chain.command_result import (
     CommandInvocation,
     commands_to_text,
 )
 from aidial_assistant.chain.dialogue import Dialogue
 from aidial_assistant.commands.reply import Reply
-from aidial_assistant.model.model_client import Message, ModelClient
+from aidial_assistant.model.model_client import ModelClient
+from aidial_assistant.utils.open_ai import assistant_message, system_message
 
 
 class ContextLengthExceeded(Exception):
@@ -25,19 +25,7 @@ class MessageScope(str, Enum):
 
 class ScopedMessage(BaseModel):
     scope: MessageScope = MessageScope.USER
-    message: Message
-
-
-def enforce_json_format(messages: list[Message]) -> list[Message]:
-    last_message = messages[-1]
-    return messages[:-1] + [
-        Message(
-            role=last_message.role,
-            content=ENFORCE_JSON_FORMAT_TEMPLATE.render(
-                response=last_message.content
-            ),
-        ),
-    ]
+    message: ChatCompletionMessageParam
 
 
 class History:
@@ -58,44 +46,45 @@ class History:
             if message.scope == MessageScope.USER
         )
 
-    def to_protocol_messages(self) -> list[Message]:
-        messages: list[Message] = []
+    def to_protocol_messages(self) -> list[ChatCompletionMessageParam]:
+        messages: list[ChatCompletionMessageParam] = []
         for index, scoped_message in enumerate(self.scoped_messages):
             message = scoped_message.message
             scope = scoped_message.scope
 
             if index == 0:
-                if message.role == Role.SYSTEM:
+                if message["role"] == "system":
                     messages.append(
-                        Message.system(
+                        system_message(
                             self.assistant_system_message_template.render(
-                                system_prefix=message.content
+                                system_prefix=message["content"]
                             )
                         )
                     )
                 else:
                     messages.append(
-                        Message.system(
+                        system_message(
                             self.assistant_system_message_template.render()
                         )
                     )
                     messages.append(message)
-            elif scope == MessageScope.USER and message.role == Role.ASSISTANT:
+            elif scope == MessageScope.USER and message["role"] == "assistant":
                 # Clients see replies in plain text, but the model should understand how to reply appropriately.
                 content = commands_to_text(
                     [
                         CommandInvocation(
-                            command=Reply.token(), args=[message.content]
+                            command=Reply.token(),
+                            arguments={"message": message.get("content", "")},
                         )
                     ]
                 )
-                messages.append(Message.assistant(content=content))
+                messages.append(assistant_message(content))
             else:
                 messages.append(message)
 
         return messages
 
-    def to_user_messages(self) -> list[Message]:
+    def to_user_messages(self) -> list[ChatCompletionMessageParam]:
         return [
             scoped_message.message
             for scoped_message in self.scoped_messages
@@ -104,18 +93,16 @@ class History:
 
     def to_best_effort_messages(
         self, error: str, dialogue: Dialogue
-    ) -> list[Message]:
+    ) -> list[ChatCompletionMessageParam]:
         messages = self.to_user_messages()
 
-        last_message = messages[-1]
-        messages[-1] = Message(
-            role=last_message.role,
-            content=self.best_effort_template.render(
-                message=last_message.content,
-                error=error,
-                dialogue=dialogue.messages,
-            ),
+        last_message = messages[-1].copy()
+        last_message["content"] = self.best_effort_template.render(
+            message=last_message.get("content", ""),
+            error=error,
+            dialogue=dialogue.messages,
         )
+        messages[-1] = last_message
 
         return messages
 
@@ -146,7 +133,7 @@ class History:
         message_iterator = iter(self.scoped_messages)
         for _ in range(discarded_messages):
             current_message = next(message_iterator)
-            while current_message.message.role == Role.SYSTEM:
+            while current_message.message["role"] == "system":
                 # System messages should be kept in the history
                 messages.append(current_message)
                 current_message = next(message_iterator)
@@ -157,7 +144,7 @@ class History:
 
             # Internal messages (i.e. addon requests/responses) are always followed by an assistant reply
             assert (
-                current_message.message.role == Role.ASSISTANT
+                current_message.message["role"] == "assistant"
             ), "Internal messages must be followed by an assistant reply."
 
         remaining_messages = list(message_iterator)

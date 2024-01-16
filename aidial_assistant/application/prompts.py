@@ -30,29 +30,36 @@ class PartialTemplate:
 
 _REQUEST_FORMAT_TEXT = """
 You should ALWAYS reply with a JSON containing an array of commands:
+```json
 {
   "commands": [
     {
       "command": "<command name>",
-      "args": [
-        "<arg1>", "<arg2>", ...
-      ]
+      "arguments": {
+        "<arg_name>": "<arg_value>"
+      }
     }
   ]
 }
-The commands are invoked by system on user's behalf.
+```
+The commands are invoked by the system on the user's behalf.
 """.strip()
 
 _PROTOCOL_FOOTER = """
 * reply
-The command delivers final response to the user.
+The last command that delivers the final response to the user.
+
 Arguments:
- - MESSAGE is a string containing the final and complete result for the user.
+  - 'message' is a string containing the final and complete result for the user.
 
 Your goal is to answer user questions. Use relevant commands when they help to achieve the goal.
 
 ## Example
-{"commands": [{"command": "reply", "args": ["Hello, world!"]}]}
+```json
+{"commands": [{"command": "reply", "arguments": {"message": "Hello, world!"}}]}
+```
+
+End of the protocol.
 """.strip()
 
 _SYSTEM_TEXT = """
@@ -67,17 +74,13 @@ This message defines the following communication protocol.
 {{request_format}}
 
 ## Commands
-{%- if addons %}
-* run-addon
-This command executes a specified addon to address a one-time task described in natural language.
-Addons do not see current conversation and require all details to be provided in the query to solve the task.
-Arguments:
- - NAME is one of the following addons:
 {%- for name, description in addons.items() %}
-    * {{name}} - {{description | decap}}
-{%- endfor %}
- - QUERY is the query string.
-{%- endif %}
+* {{name}}
+{{description.strip()}}
+
+Arguments:
+  - 'query' is a query written in natural language.
+{% endfor %}
 {{protocol_footer}}
 """.strip()
 
@@ -100,9 +103,10 @@ API_DESCRIPTION:
 ## Commands
 {%- for command_name in command_names %}
 * {{command_name}}
+
 Arguments:
- - <JSON dict according to the API Schema>
-{%- endfor %}
+  - <JSON dict according to the API Schema>
+{% endfor %}
 {{protocol_footer}}
 """.strip()
 

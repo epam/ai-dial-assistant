@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Callable, List, TypedDict
+from typing import Any, Callable, List, TypedDict, TypeVar
 
 from typing_extensions import override
 
@@ -43,24 +43,18 @@ class Command(ABC):
         pass
 
     async def execute(
-        self, args: List[Any], execution_callback: ExecutionCallback
+        self, args: dict[str, Any], execution_callback: ExecutionCallback
     ) -> ResultObject:
         raise Exception(f"Command {self} isn't implemented")
 
     def __str__(self) -> str:
         return self.token()
 
-    def assert_arg_count(self, args: List[Any], count: int):
-        if len(args) != count:
-            raise ValueError(
-                f"Command {self} expects {count} args, but got {len(args)}"
-            )
-
 
 class FinalCommand(Command, ABC):
     @override
     async def execute(
-        self, args: List[Any], execution_callback: ExecutionCallback
+        self, args: dict[str, Any], execution_callback: ExecutionCallback
     ) -> ResultObject:
         raise Exception(
             f"Internal error: command {self} is final and can't be executed"
@@ -70,3 +64,16 @@ class FinalCommand(Command, ABC):
 class CommandObject(TypedDict):
     command: str
     args: List[str]
+
+
+CommandConstructor = Callable[[], Command]
+
+
+T = TypeVar("T")
+
+
+def get_required_field(args: dict[str, T], field: str) -> T:
+    value = args.get(field)
+    if value is None:
+        raise Exception(f"Parameter '{field}' is required")
+    return value

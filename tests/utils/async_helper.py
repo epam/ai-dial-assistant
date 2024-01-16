@@ -20,3 +20,7 @@ def to_async_repeated_string(
 async def to_async_iterator(sequence: Iterable[T]) -> AsyncIterator[T]:
     for item in sequence:
         yield item
+
+
+async def to_awaitable_iterator(sequence: Iterable[T]) -> AsyncIterator[T]:
+    return to_async_iterator(sequence)

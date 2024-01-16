@@ -1,6 +1,7 @@
+import httpx
 import pytest
 from aidial_sdk import HTTPException
-from openai import OpenAIError
+from openai import APIStatusError, OpenAIError
 
 from aidial_assistant.utils.exceptions import (
     RequestParameterValidationError,
@@ -29,19 +30,17 @@ async def test_request_parameter_validation_error():
 
 @pytest.mark.asyncio
 async def test_openai_error():
-    http_status = 123
-
     @unhandled_exception_handler
     async def function():
-        raise OpenAIError(message=ERROR_MESSAGE, http_status=http_status)
+        raise OpenAIError(ERROR_MESSAGE)
 
     with pytest.raises(HTTPException) as exc_info:
         await function()
 
     assert (
         repr(exc_info.value)
-        == f"HTTPException(message='{ERROR_MESSAGE}', status_code={http_status},"
-        f" type='runtime_error', param=None, code=None)"
+        == f"HTTPException(message='{ERROR_MESSAGE}', status_code=500,"
+        f" type='internal_server_error', param=None, code=None)"
     )
 
 
@@ -51,17 +50,21 @@ async def test_openai_error_with_json_body():
     error_type = "<error type>"
     error_code = "<error code>"
     json_body = {
-        "error": {
-            "message": ERROR_MESSAGE,
-            "type": error_type,
-            "code": error_code,
-            "param": PARAM,
-        }
+        "type": error_type,
+        "code": error_code,
+        "param": PARAM,
     }
 
     @unhandled_exception_handler
     async def function():
-        raise OpenAIError(json_body=json_body, http_status=http_status)
+        raise APIStatusError(
+            ERROR_MESSAGE,
+            response=httpx.Response(
+                request=httpx.Request("GET", "http://localhost"),
+                status_code=http_status,
+            ),
+            body=json_body,
+        )
 
     with pytest.raises(HTTPException) as exc_info:
         await function()

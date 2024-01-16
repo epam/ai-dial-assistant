@@ -4,7 +4,10 @@ from aidial_assistant.chain.command_chain import (
     LimitExceededException,
     ModelRequestLimiter,
 )
-from aidial_assistant.model.model_client import Message, ModelClient
+from aidial_assistant.model.model_client import (
+    ChatCompletionMessageParam,
+    ModelClient,
+)
 
 
 class AddonsDialogueLimiter(ModelRequestLimiter):
@@ -16,7 +19,7 @@ class AddonsDialogueLimiter(ModelRequestLimiter):
         self._initial_tokens: int | None = None
 
     @override
-    async def verify_limit(self, messages: list[Message]):
+    async def verify_limit(self, messages: list[ChatCompletionMessageParam]):
         if self._initial_tokens is None:
             self._initial_tokens = await self.model_client.count_tokens(
                 messages
