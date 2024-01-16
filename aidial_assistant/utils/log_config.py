@@ -5,7 +5,7 @@ def get_log_config(log_level: str) -> dict:
         "formatters": {
             "default": {
                 "()": "uvicorn.logging.DefaultFormatter",
-                "fmt": "%(levelprefix)s | %(asctime)s | %(name)s | %(process)d | %(message)s",
+                "fmt": "%(levelprefix)s | %(asctime)s | %(name)s | %(process)d | [trace_id=%(otelTraceID)s span_id=%(otelSpanID)s] - %(message)s",
                 "datefmt": "%Y-%m-%d %H:%M:%S",
                 "use_colors": True,
             },
