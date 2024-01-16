@@ -20,4 +20,10 @@ def get_log_config(log_level: str) -> dict:
             "handlers": ["default"],
             "level": log_level,
         },
+        "loggers": {
+            "aidial_sdk": {
+                "handlers": ["default"],
+                "level": log_level,
+            },
+        },
     }
