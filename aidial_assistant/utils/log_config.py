@@ -1,11 +1,16 @@
-def get_log_config(log_level: str) -> dict:
+def get_log_config(log_level: str, otel_logging: bool) -> dict:
+    otel_prefix_fmt = (
+        "[trace_id=%(otelTraceID)s span_id=%(otelSpanID)s] - "
+        if otel_logging
+        else ""
+    )
     return {
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
             "default": {
                 "()": "uvicorn.logging.DefaultFormatter",
-                "fmt": "%(levelprefix)s | %(asctime)s | %(name)s | %(process)d | %(message)s",
+                "fmt": f"%(levelprefix)s | %(asctime)s | %(name)s | %(process)d | {otel_prefix_fmt}%(message)s",
                 "datefmt": "%Y-%m-%d %H:%M:%S",
                 "use_colors": True,
             },
