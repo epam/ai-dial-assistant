@@ -254,10 +254,15 @@ class AssistantApplication(ChatCompletion):
         request: Request,
         response: Response,
     ):
+        # TODO: Add max_addons_dialogue_tokens as a request parameter
+        max_addons_dialogue_tokens = 1000
+
         def create_command_tool(
             plugin: PluginInfo,
         ) -> Tuple[CommandConstructor, ChatCompletionToolParam]:
-            return lambda: RunTool(model, plugin), _construct_tool(
+            return lambda: RunTool(
+                model, plugin, max_addons_dialogue_tokens
+            ), _construct_tool(
                 plugin.info.ai_plugin.name_for_model,
                 plugin.info.ai_plugin.description_for_human,
             )
@@ -275,7 +280,10 @@ class AssistantApplication(ChatCompletion):
         finish_reason = FinishReason.STOP
         messages = convert_commands_to_tools(parse_history(request.messages))
         try:
-            await chain.run_chat(messages, callback)
+            model_request_limiter = AddonsDialogueLimiter(
+                max_addons_dialogue_tokens, model
+            )
+            await chain.run_chat(messages, callback, model_request_limiter)
         except ReasonLengthException:
             finish_reason = FinishReason.LENGTH
 
