@@ -83,10 +83,14 @@ class TestCommand(Command):
     async def execute(
         self, args: dict[str, Any], execution_callback: ExecutionCallback
     ) -> ResultObject:
-        args_string = json.dumps(args)
+        args_string = TestCommand.execute_key(args)
         assert args_string in self.results, f"Unexpected argument: {args}"
 
         return ResultObject(ResultType.TEXT, self.results[args_string])
+
+    @staticmethod
+    def execute_key(args: dict[str, Any]) -> str:
+        return json.dumps({"args": args})
 
 
 class TestResultCallback(ResultCallback):

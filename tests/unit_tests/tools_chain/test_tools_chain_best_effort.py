@@ -30,13 +30,13 @@ BEST_EFFORT_RESPONSE = "<best effort response>"
 @pytest.mark.asyncio
 async def test_model_request_limit_exceeded():
     messages: list[ChatCompletionMessageParam] = [user_message("<query>")]
-    command_args = json.dumps({"<test argument>": "<test value>"})
+    command_args = {"<test argument>": "<test value>"}
     tool_calls = [
         ChatCompletionMessageToolCallParam(
             id=TOOL_ID,
             function=Function(
                 name=TEST_COMMAND_NAME,
-                arguments=command_args,
+                arguments=json.dumps(command_args),
             ),
             type="function",
         )
@@ -55,14 +55,12 @@ async def test_model_request_limit_exceeded():
     ]
     model_request_limiter = TestModelRequestLimiter(messages_with_dialogue)
     callback = TestChainCallback()
+    command = TestCommand(
+        {TestCommand.execute_key(command_args): TOOL_RESPONSE}
+    )
     tools_chain = ToolsChain(
         model,
-        commands={
-            TEST_COMMAND_NAME: (
-                lambda: TestCommand({command_args: TOOL_RESPONSE}),
-                tool,
-            )
-        },
+        commands={TEST_COMMAND_NAME: (lambda: command, tool)},
     )
 
     await tools_chain.run_chat(messages, callback, model_request_limiter)
