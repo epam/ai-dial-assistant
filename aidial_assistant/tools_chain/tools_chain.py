@@ -11,7 +11,11 @@ from openai.types.chat.chat_completion_message_tool_call_param import Function
 
 from aidial_assistant.chain.callbacks.chain_callback import ChainCallback
 from aidial_assistant.chain.callbacks.command_callback import CommandCallback
-from aidial_assistant.chain.command_chain import CommandConstructor
+from aidial_assistant.chain.command_chain import (
+    CommandConstructor,
+    LimitExceededException,
+    ModelRequestLimiter,
+)
 from aidial_assistant.chain.command_result import (
     CommandInvocation,
     CommandResult,
@@ -119,35 +123,56 @@ class ToolCallsCallback(ExtraResultsCallback):
 
 
 class ToolsChain:
-    def __init__(self, model: ModelClient, commands: CommandToolDict):
+    def __init__(
+        self,
+        model: ModelClient,
+        commands: CommandToolDict,
+        max_completion_tokens: int | None = None,
+    ):
         self.model = model
         self.commands = commands
+        self.model_extra_args = (
+            {}
+            if max_completion_tokens is None
+            else {"max_tokens": max_completion_tokens}
+        )
 
     async def run_chat(
         self,
         messages: list[ChatCompletionMessageParam],
         callback: ChainCallback,
+        model_request_limiter: ModelRequestLimiter | None = None,
     ):
         result_callback = callback.result_callback()
-        dialogue: list[ChatCompletionMessageParam] = []
         last_message_block_length = 0
         tools = [tool for _, tool in self.commands.values()]
+        all_messages = messages.copy()
         while True:
             tool_calls_callback = ToolCallsCallback()
             try:
+                if model_request_limiter:
+                    await model_request_limiter.verify_limit(all_messages)
+
                 async for chunk in self.model.agenerate(
-                    messages + dialogue, tool_calls_callback, tools=tools
+                    all_messages,
+                    tool_calls_callback,
+                    tools=tools,
+                    **self.model_extra_args,
                 ):
                     result_callback.on_result(chunk)
-            except BadRequestError as e:
-                if len(dialogue) == 0 or e.code == "429":
+            except (BadRequestError, LimitExceededException) as e:
+                if (
+                    last_message_block_length == 0
+                    or isinstance(e, BadRequestError)
+                    and e.code == "429"
+                ):
                     raise
 
                 # If the dialog size exceeds model context size then remove last message block
                 # and try again without tools.
-                dialogue = dialogue[:-last_message_block_length]
+                all_messages = all_messages[:-last_message_block_length]
                 async for chunk in self.model.agenerate(
-                    messages + dialogue, tool_calls_callback
+                    all_messages, tool_calls_callback
                 ):
                     result_callback.on_result(chunk)
                 break
@@ -155,16 +180,19 @@ class ToolsChain:
             if not tool_calls_callback.tool_calls:
                 break
 
-            dialogue.append(
+            previous_message_count = len(all_messages)
+            all_messages.append(
                 tool_calls_message(
                     tool_calls_callback.tool_calls,
                 )
             )
-            result_messages = await self._run_tools(
+            all_messages += await self._run_tools(
                 tool_calls_callback.tool_calls, callback
             )
-            dialogue.extend(result_messages)
-            last_message_block_length = len(result_messages) + 1
+
+            last_message_block_length = (
+                len(all_messages) - previous_message_count
+            )
 
     def _create_command(self, name: str) -> Command:
         if name not in self.commands:
