@@ -29,7 +29,7 @@ def _to_http_exception(e: Exception) -> HTTPException:
     if isinstance(e, APIError):
         raise HTTPException(
             message=e.message,
-            status_code=getattr(e, "status_code", 500),
+            status_code=getattr(e, "status_code", 500) or 500,
             type=e.type or "runtime_error",
             code=e.code,
             param=e.param,
