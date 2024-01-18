@@ -64,9 +64,12 @@ def _construct_tool(op: APIOperation) -> ChatCompletionToolParam:
 
 
 class RunTool(Command):
-    def __init__(self, model: ModelClient, plugin: PluginInfo):
+    def __init__(
+        self, model: ModelClient, plugin: PluginInfo, max_completion_tokens: int
+    ):
         self.model = model
         self.plugin = plugin
+        self.max_completion_tokens = max_completion_tokens
 
     @staticmethod
     def token():
@@ -91,7 +94,7 @@ class RunTool(Command):
             name: create_command_tool(op) for name, op in ops.items()
         }
 
-        chain = ToolsChain(self.model, commands)
+        chain = ToolsChain(self.model, commands, self.max_completion_tokens)
 
         messages = [
             system_message(self.plugin.info.ai_plugin.description_for_model),
