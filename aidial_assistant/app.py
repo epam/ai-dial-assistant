@@ -25,7 +25,7 @@ telemetry_config = TelemetryConfig(
         otlp_export=otlp_export_enabled, logging=otel_logging_enabled
     ),
 )
-app = DIALApp(telemetry_config=telemetry_config)
+app = DIALApp(telemetry_config=telemetry_config, add_healthcheck=True)
 
 # A delayed import is necessary to set up the httpx hook before the openai client inherits from AsyncClient.
 from aidial_assistant.application.assistant_application import (  # noqa: E402
