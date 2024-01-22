@@ -4,10 +4,8 @@ from urllib.parse import urljoin
 
 from aiocache import cached
 from aiohttp import hdrs
-from fastapi import HTTPException
 from langchain.tools import OpenAPISpec
 from pydantic import BaseModel, parse_obj_as
-from starlette.status import HTTP_401_UNAUTHORIZED
 
 from aidial_assistant.utils.requests import aget
 
@@ -57,32 +55,6 @@ class AddonTokenSource:
     @property
     def default_auth(self) -> str | None:
         return self.headers.get(hdrs.AUTHORIZATION)
-
-
-def get_plugin_auth(
-    auth_type: str,
-    authorization_type: str,
-    url: str,
-    token_source: AddonTokenSource,
-) -> str | None:
-    if auth_type == "none":
-        return token_source.default_auth
-
-    if auth_type == "service_http":
-        service_token = token_source.get_token(url)
-        if service_token is None:
-            raise HTTPException(
-                status_code=HTTP_401_UNAUTHORIZED,
-                detail=f"Missing token for {url}",
-            )
-
-        # Capitalizing because Wolfram, for instance, doesn't like lowercase bearer
-        return f"{authorization_type.capitalize()} {service_token}"
-
-    raise HTTPException(
-        status_code=HTTP_401_UNAUTHORIZED,
-        detail=f"Unknown auth type {auth_type}",
-    )
 
 
 async def get_open_ai_plugin_info(addon_url: str) -> OpenAIPluginInfo:

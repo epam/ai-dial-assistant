@@ -17,6 +17,11 @@ class RequestParameterValidationError(Exception):
         return self._param
 
 
+class UnauthorizedAddonError(Exception):
+    def __init__(self, message: str, *args: object) -> None:
+        super().__init__(message, *args)
+
+
 def _to_http_exception(e: Exception) -> HTTPException:
     if isinstance(e, RequestParameterValidationError):
         return HTTPException(
@@ -24,6 +29,11 @@ def _to_http_exception(e: Exception) -> HTTPException:
             status_code=422,
             type="invalid_request_error",
             param=e.param,
+        )
+
+    if isinstance(e, UnauthorizedAddonError):
+        return HTTPException(
+            message=str(e), status_code=401, type="invalid_request_error"
         )
 
     if isinstance(e, APIError):

@@ -36,6 +36,7 @@ from aidial_assistant.json_stream.json_string import JsonString
 from aidial_assistant.model.model_client import (
     ChatCompletionMessageParam,
     ModelClient,
+    ModelClientRequest,
 )
 from aidial_assistant.utils.stream import CumulativeStream
 
@@ -72,11 +73,7 @@ class CommandChain:
         self.name = name
         self.model_client = model_client
         self.command_dict = command_dict
-        self.model_extra_args = (
-            {}
-            if max_completion_tokens is None
-            else {"max_tokens": max_completion_tokens}
-        )
+        self.max_completion_tokens = max_completion_tokens
         self.max_retry_count = max_retry_count
 
     def _log_message(self, role: str, content: str | None):
@@ -149,7 +146,10 @@ class CommandChain:
 
                 chunk_stream = CumulativeStream(
                     self.model_client.agenerate(
-                        all_messages, **self.model_extra_args  # type: ignore
+                        ModelClientRequest(
+                            messages=all_messages,
+                            max_tokens=self.max_completion_tokens,
+                        )
                     )
                 )
                 try:
@@ -252,7 +252,9 @@ class CommandChain:
         messages: list[ChatCompletionMessageParam],
         callback: ChainCallback,
     ):
-        stream = self.model_client.agenerate(messages)
+        stream = self.model_client.agenerate(
+            ModelClientRequest(messages=messages)
+        )
 
         await CommandChain._to_result(stream, callback.result_callback())
 

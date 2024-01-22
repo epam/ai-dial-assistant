@@ -1,11 +1,11 @@
 from langchain.tools import APIOperation
-from pydantic.main import BaseModel
 from typing_extensions import override
 
 from aidial_assistant.application.prompts import (
     ADDON_BEST_EFFORT_TEMPLATE,
     ADDON_SYSTEM_DIALOG_MESSAGE,
 )
+from aidial_assistant.application.request_data import PluginInfo
 from aidial_assistant.chain.command_chain import (
     CommandChain,
     CommandConstructor,
@@ -27,12 +27,6 @@ from aidial_assistant.model.model_client import (
 )
 from aidial_assistant.open_api.operation_selector import collect_operations
 from aidial_assistant.utils.open_ai import user_message
-from aidial_assistant.utils.open_ai_plugin import OpenAIPluginInfo
-
-
-class PluginInfo(BaseModel):
-    info: OpenAIPluginInfo
-    auth: str | None
 
 
 class RunPlugin(Command):
@@ -40,10 +34,12 @@ class RunPlugin(Command):
         self,
         model_client: ModelClient,
         plugin: PluginInfo,
+        auth: str | None,
         max_completion_tokens: int,
     ):
         self.model_client = model_client
         self.plugin = plugin
+        self.auth = auth
         self.max_completion_tokens = max_completion_tokens
 
     @staticmethod

@@ -24,6 +24,7 @@ from aidial_assistant.commands.base import (
 from aidial_assistant.model.model_client import (
     ExtraResultsCallback,
     ModelClient,
+    ModelClientRequest,
 )
 
 
@@ -49,11 +50,10 @@ class TestModelClient(ModelClient):
     @override
     async def agenerate(
         self,
-        messages: list[ChatCompletionMessageParam],
+        request: ModelClientRequest,
         extra_results_callback: ExtraResultsCallback | None = None,
-        **kwargs,
     ) -> AsyncIterator[str]:
-        args = TestModelClient.agenerate_key(messages, **kwargs)
+        args = TestModelClient.agenerate_key(request)
         if extra_results_callback and args in self.tool_calls:
             extra_results_callback.on_tool_calls(self.tool_calls[args])
             return
@@ -65,10 +65,8 @@ class TestModelClient(ModelClient):
         assert False, f"Unexpected arguments: {args}"
 
     @staticmethod
-    def agenerate_key(
-        messages: list[ChatCompletionMessageParam], **kwargs
-    ) -> str:
-        return json.dumps({"messages": messages, **kwargs})
+    def agenerate_key(request: ModelClientRequest) -> str:
+        return json.dumps(request)
 
 
 class TestCommand(Command):

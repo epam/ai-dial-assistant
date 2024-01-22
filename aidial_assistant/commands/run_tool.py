@@ -7,6 +7,7 @@ from langchain_community.tools.openapi.utils.api_models import (
 from openai.types.chat import ChatCompletionToolParam
 from typing_extensions import override
 
+from aidial_assistant.application.request_data import PluginInfo
 from aidial_assistant.commands.base import (
     Command,
     ExecutionCallback,
@@ -16,7 +17,6 @@ from aidial_assistant.commands.base import (
 )
 from aidial_assistant.commands.open_api import OpenAPIChatCommand
 from aidial_assistant.commands.plugin_callback import PluginChainCallback
-from aidial_assistant.commands.run_plugin import PluginInfo
 from aidial_assistant.model.model_client import (
     ModelClient,
     ReasonLengthException,
@@ -65,10 +65,15 @@ def _construct_tool(op: APIOperation) -> ChatCompletionToolParam:
 
 class RunTool(Command):
     def __init__(
-        self, model: ModelClient, plugin: PluginInfo, max_completion_tokens: int
+        self,
+        model: ModelClient,
+        plugin: PluginInfo,
+        auth: str | None,
+        max_completion_tokens: int,
     ):
         self.model = model
         self.plugin = plugin
+        self.auth = auth
         self.max_completion_tokens = max_completion_tokens
 
     @staticmethod
@@ -86,9 +91,9 @@ class RunTool(Command):
         )
 
         def create_command_tool(op: APIOperation) -> CommandTool:
-            return lambda: OpenAPIChatCommand(
-                op, self.plugin.auth
-            ), _construct_tool(op)
+            return lambda: OpenAPIChatCommand(op, self.auth), _construct_tool(
+                op
+            )
 
         commands: CommandToolDict = {
             name: create_command_tool(op) for name, op in ops.items()

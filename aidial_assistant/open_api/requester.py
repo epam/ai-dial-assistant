@@ -7,7 +7,7 @@ from aiohttp import hdrs
 from langchain.tools.openapi.utils.api_models import APIOperation
 
 from aidial_assistant.commands.base import JsonResult, ResultObject, TextResult
-from aidial_assistant.utils.requests import arequest
+from aidial_assistant.utils.requests import _arequest
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ class OpenAPIEndpointRequester:
             else {hdrs.AUTHORIZATION: self.plugin_auth}
         )
         logger.debug(f"Request args: {request_args}")
-        async with arequest(
+        async with _arequest(
             self.operation.method.value, headers=headers, **request_args  # type: ignore
         ) as response:
             if response.status != 200:

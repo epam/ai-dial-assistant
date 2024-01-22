@@ -1,8 +1,8 @@
 from aidial_sdk.chat_completion import CustomContent, Message, Role
 
+from aidial_assistant.application.request_data import _parse_history
 from aidial_assistant.chain.history import MessageScope, ScopedMessage
 from aidial_assistant.utils.open_ai import assistant_message, user_message
-from aidial_assistant.utils.state import parse_history
 
 FIRST_USER_MESSAGE = "<first user message>"
 SECOND_USER_MESSAGE = "<first user message>"
@@ -42,37 +42,45 @@ def test_parse_history():
         Message(role=Role.ASSISTANT, content=SECOND_ASSISTANT_MESSAGE),
     ]
 
-    assert parse_history(messages) == [
+    assert _parse_history(messages) == [
         ScopedMessage(
             scope=MessageScope.USER,
             message=user_message(FIRST_USER_MESSAGE),
+            user_index=0,
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
             message=assistant_message(FIRST_REQUEST_FIXED),
+            user_index=0,
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
             message=user_message(FIRST_RESPONSE),
+            user_index=0,
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
             message=assistant_message(SECOND_REQUEST),
+            user_index=0,
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
             message=user_message(content=SECOND_RESPONSE),
+            user_index=0,
         ),
         ScopedMessage(
             scope=MessageScope.USER,
             message=assistant_message(FIRST_ASSISTANT_MESSAGE),
+            user_index=1,
         ),
         ScopedMessage(
             scope=MessageScope.USER,
             message=user_message(SECOND_USER_MESSAGE),
+            user_index=2,
         ),
         ScopedMessage(
             scope=MessageScope.USER,
             message=assistant_message(SECOND_ASSISTANT_MESSAGE),
+            user_index=3,
         ),
     ]

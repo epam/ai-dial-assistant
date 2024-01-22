@@ -1,14 +1,26 @@
 import logging
 from pathlib import Path
-from typing import Tuple
+from typing import Callable, Tuple
 
 from aidial_sdk.chat_completion import FinishReason
 from aidial_sdk.chat_completion.base import ChatCompletion
-from aidial_sdk.chat_completion.request import Addon, Message, Request, Role
+from aidial_sdk.chat_completion.request import Request
 from aidial_sdk.chat_completion.response import Response
+from aidial_sdk.deployment.tokenize import (
+    TokenizeError,
+    TokenizeRequest,
+    TokenizeResponse,
+    TokenizeSuccess,
+)
+from aidial_sdk.deployment.truncate_prompt import (
+    TruncatePromptError,
+    TruncatePromptRequest,
+    TruncatePromptResponse,
+    TruncatePromptSuccess,
+)
 from openai.lib.azure import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletionToolParam
-from pydantic import BaseModel
+from typing_extensions import override
 
 from aidial_assistant.application.addons_dialogue_limiter import (
     AddonsDialogueLimiter,
@@ -21,18 +33,32 @@ from aidial_assistant.application.prompts import (
     MAIN_BEST_EFFORT_TEMPLATE,
     MAIN_SYSTEM_DIALOG_MESSAGE,
 )
+from aidial_assistant.application.request_data import (
+    PluginInfo,
+    RequestData,
+    get_discarded_user_messages,
+)
 from aidial_assistant.chain.command_chain import (
     CommandChain,
     CommandConstructor,
     CommandDict,
 )
-from aidial_assistant.chain.history import History
+from aidial_assistant.chain.history import History, ScopedMessage
 from aidial_assistant.commands.reply import Reply
-from aidial_assistant.commands.run_plugin import PluginInfo, RunPlugin
+from aidial_assistant.commands.run_plugin import RunPlugin
 from aidial_assistant.commands.run_tool import RunTool
 from aidial_assistant.model.model_client import (
     ModelClient,
+    ModelClientRequest,
     ReasonLengthException,
+)
+from aidial_assistant.model.tokenize_client import (
+    TokenizeClient,
+    TokenizeClientRequest,
+)
+from aidial_assistant.model.truncate_propmt_client import (
+    TruncatePromptClient,
+    TruncatePromptClientRequest,
 )
 from aidial_assistant.tools_chain.tools_chain import (
     CommandToolDict,
@@ -41,64 +67,20 @@ from aidial_assistant.tools_chain.tools_chain import (
 )
 from aidial_assistant.utils.exceptions import (
     RequestParameterValidationError,
+    UnauthorizedAddonError,
     unhandled_exception_handler,
 )
 from aidial_assistant.utils.open_ai import construct_tool
-from aidial_assistant.utils.open_ai_plugin import (
-    AddonTokenSource,
-    get_open_ai_plugin_info,
-    get_plugin_auth,
-)
-from aidial_assistant.utils.state import State, parse_history
+from aidial_assistant.utils.open_ai_plugin import AddonTokenSource, AIPluginConf
+from aidial_assistant.utils.state import State
 
 logger = logging.getLogger(__name__)
 
 
-class AddonReference(BaseModel):
-    name: str | None
-    url: str
-
-
-def _get_request_args(request: Request) -> dict[str, str]:
-    args = {
-        "model": request.model,
-        "temperature": request.temperature,
-        "user": request.user,
-    }
-
-    return {k: v for k, v in args.items() if v is not None}
-
-
-def _validate_addons(addons: list[Addon] | None) -> list[AddonReference]:
-    addon_references: list[AddonReference] = []
-    for index, addon in enumerate(addons or []):
-        if addon.url is None:
-            raise RequestParameterValidationError(
-                f"Missing required addon url at index {index}.",
-                param="addons",
-            )
-
-        addon_references.append(AddonReference(name=addon.name, url=addon.url))
-
-    return addon_references
-
-
-def _validate_messages(messages: list[Message]) -> None:
-    if not messages:
-        raise RequestParameterValidationError(
-            "Message list cannot be empty.", param="messages"
-        )
-
-    if messages[-1].role != Role.USER:
-        raise RequestParameterValidationError(
-            "Last message must be from the user.", param="messages"
-        )
-
-
-def _construct_tool(name: str, description: str) -> ChatCompletionToolParam:
+def _construct_tool(plugin_conf: AIPluginConf) -> ChatCompletionToolParam:
     return construct_tool(
-        name,
-        description,
+        plugin_conf.name_for_model,
+        plugin_conf.description_for_human,
         {
             "query": {
                 "type": "string",
@@ -109,6 +91,66 @@ def _construct_tool(name: str, description: str) -> ChatCompletionToolParam:
     )
 
 
+def _create_history(
+    messages: list[ScopedMessage], plugins: list[PluginInfo]
+) -> History:
+    plugin_descriptions = {
+        plugin.info.ai_plugin.name_for_model: plugin.info.open_api.info.description
+        or plugin.info.ai_plugin.description_for_human
+        for plugin in plugins
+    }
+    return History(
+        assistant_system_message_template=MAIN_SYSTEM_DIALOG_MESSAGE.build(
+            addons=plugin_descriptions
+        ),
+        best_effort_template=MAIN_BEST_EFFORT_TEMPLATE.build(
+            addons=plugin_descriptions
+        ),
+        scoped_messages=messages,
+    )
+
+
+def _get_plugin_auth(
+    plugin: PluginInfo, token_source: AddonTokenSource
+) -> str | None:
+    auth_type = plugin.info.ai_plugin.auth.type
+
+    if auth_type == "none":
+        return token_source.default_auth
+
+    if auth_type == "service_http":
+        service_token = token_source.get_token(plugin.url)
+        if service_token is None:
+            raise UnauthorizedAddonError(f"Missing token for {plugin.url}")
+
+        authorization_type = plugin.info.ai_plugin.auth.authorization_type
+
+        # Capitalizing because Wolfram, for instance, doesn't like lowercase bearer
+        return f"{authorization_type.capitalize()} {service_token}"
+
+    raise UnauthorizedAddonError(f"Unknown auth type {auth_type}")
+
+
+def _native_tools_request(request_data: RequestData) -> ModelClientRequest:
+    tools = [
+        _construct_tool(plugin.info.ai_plugin)
+        for plugin in request_data.plugins
+    ]
+    return ModelClientRequest(
+        messages=convert_commands_to_tools(request_data.messages),
+        max_prompt_tokens=request_data.max_prompt_tokens,
+        tools=tools,
+    )
+
+
+def _emulated_tools_request(request_data: RequestData) -> ModelClientRequest:
+    history = _create_history(request_data.messages, request_data.plugins)
+    return ModelClientRequest(
+        messages=history.to_protocol_messages(),
+        max_prompt_tokens=request_data.max_prompt_tokens,
+    )
+
+
 class AssistantApplication(ChatCompletion):
     def __init__(
         self, config_dir: Path, tools_supporting_deployments: set[str]
@@ -116,13 +158,12 @@ class AssistantApplication(ChatCompletion):
         self.args = parse_args(config_dir)
         self.tools_supporting_deployments = tools_supporting_deployments
 
+    @override
     @unhandled_exception_handler
     async def chat_completion(
         self, request: Request, response: Response
     ) -> None:
-        _validate_messages(request.messages)
-        addon_references = _validate_addons(request.addons)
-        chat_args = _get_request_args(request)
+        request_data = await RequestData.from_dial_request(request)
 
         model = ModelClient(
             client=AsyncAzureOpenAI(
@@ -131,66 +172,43 @@ class AssistantApplication(ChatCompletion):
                 # 2023-12-01-preview is needed to support tools
                 api_version="2023-12-01-preview",
             ),
-            model_args=chat_args,
+            model_args=request_data.model_args,
         )
-
         token_source = AddonTokenSource(
             request.headers,
-            (addon_reference.url for addon_reference in addon_references),
+            (plugin.url for plugin in request_data.plugins),
         )
 
-        plugins: list[PluginInfo] = []
-        # DIAL Core has own names for addons, so in stages we need to map them to the names used by the user
-        addon_name_mapping: dict[str, str] = {}
-        for addon_reference in addon_references:
-            info = await get_open_ai_plugin_info(addon_reference.url)
-            plugins.append(
-                PluginInfo(
-                    info=info,
-                    auth=get_plugin_auth(
-                        info.ai_plugin.auth.type,
-                        info.ai_plugin.auth.authorization_type,
-                        addon_reference.url,
-                        token_source,
-                    ),
-                )
-            )
-
-            if addon_reference.name:
-                addon_name_mapping[
-                    info.ai_plugin.name_for_model
-                ] = addon_reference.name
-
-        if request.model in self.tools_supporting_deployments:
+        if self._supports_native_tools(request.model):
             await AssistantApplication._run_native_tools_chat(
-                model, plugins, addon_name_mapping, request, response
+                model, token_source, request_data, response
             )
         else:
             await AssistantApplication._run_emulated_tools_chat(
-                model, plugins, addon_name_mapping, request, response
+                model, token_source, request_data, response
             )
 
     @staticmethod
     async def _run_emulated_tools_chat(
         model: ModelClient,
-        addons: list[PluginInfo],
-        addon_name_mapping: dict[str, str],
-        request: Request,
+        token_source: AddonTokenSource,
+        request_data: RequestData,
         response: Response,
     ):
-        # TODO: Add max_addons_dialogue_tokens as a request parameter
-        max_addons_dialogue_tokens = 1000
-
-        def create_command(addon: PluginInfo):
-            return lambda: RunPlugin(model, addon, max_addons_dialogue_tokens)
+        def create_command(plugin: PluginInfo, auth: str | None):
+            return lambda: RunPlugin(
+                model, plugin, auth, request_data.max_addons_dialogue_tokens
+            )
 
         command_dict: CommandDict = {
-            addon.info.ai_plugin.name_for_model: create_command(addon)
-            for addon in addons
+            plugin.info.ai_plugin.name_for_model: create_command(
+                plugin, _get_plugin_auth(plugin, token_source)
+            )
+            for plugin in request_data.plugins
         }
         if Reply.token() in command_dict:
             RequestParameterValidationError(
-                f"Addon with name '{Reply.token()}' is not allowed for model {request.model}.",
+                f"Addon with name '{Reply.token()}' is not allowed in emulated tools mode.",
                 param="addons",
             )
 
@@ -199,36 +217,27 @@ class AssistantApplication(ChatCompletion):
         chain = CommandChain(
             model_client=model, name="ASSISTANT", command_dict=command_dict
         )
-        addon_descriptions = {
-            addon.info.ai_plugin.name_for_model: addon.info.open_api.info.description
-            or addon.info.ai_plugin.description_for_human
-            for addon in addons
-        }
-        history = History(
-            assistant_system_message_template=MAIN_SYSTEM_DIALOG_MESSAGE.build(
-                addons=addon_descriptions
-            ),
-            best_effort_template=MAIN_BEST_EFFORT_TEMPLATE.build(
-                addons=addon_descriptions
-            ),
-            scoped_messages=parse_history(request.messages),
-        )
-        discarded_messages: int | None = None
-        if request.max_prompt_tokens is not None:
-            original_size = history.user_message_count
-            history = await history.truncate(request.max_prompt_tokens, model)
-            truncated_size = history.user_message_count
-            discarded_messages = original_size - truncated_size
+        history = _create_history(request_data.messages, request_data.plugins)
+        discarded_user_messages: list[int] | None = None
+        if request_data.max_prompt_tokens is not None:
+            history, discarded_messages = await history.truncate(
+                model, request_data.max_prompt_tokens
+            )
+            discarded_user_messages = get_discarded_user_messages(
+                request_data.messages, discarded_messages
+            )
         # TODO: else compare the history size to the max prompt tokens of the underlying model
 
         choice = response.create_single_choice()
         choice.open()
 
-        callback = AssistantChainCallback(choice, addon_name_mapping)
+        callback = AssistantChainCallback(
+            choice, request_data.addon_name_mapping
+        )
         finish_reason = FinishReason.STOP
         try:
             model_request_limiter = AddonsDialogueLimiter(
-                max_addons_dialogue_tokens, model
+                request_data.max_addons_dialogue_tokens, model
             )
             await chain.run_chat(history, callback, model_request_limiter)
         except ReasonLengthException:
@@ -243,45 +252,42 @@ class AssistantApplication(ChatCompletion):
             model.total_prompt_tokens, model.total_completion_tokens
         )
 
-        if discarded_messages is not None:
-            response.set_discarded_messages(discarded_messages)
+        if discarded_user_messages is not None:
+            response.set_discarded_messages(discarded_user_messages)
 
     @staticmethod
     async def _run_native_tools_chat(
         model: ModelClient,
-        plugins: list[PluginInfo],
-        addon_name_mapping: dict[str, str],
-        request: Request,
+        token_source: AddonTokenSource,
+        request_data: RequestData,
         response: Response,
     ):
-        # TODO: Add max_addons_dialogue_tokens as a request parameter
-        max_addons_dialogue_tokens = 1000
-
         def create_command_tool(
-            plugin: PluginInfo,
+            plugin: PluginInfo, auth: str | None
         ) -> Tuple[CommandConstructor, ChatCompletionToolParam]:
             return lambda: RunTool(
-                model, plugin, max_addons_dialogue_tokens
-            ), _construct_tool(
-                plugin.info.ai_plugin.name_for_model,
-                plugin.info.ai_plugin.description_for_human,
-            )
+                model, plugin, auth, request_data.max_addons_dialogue_tokens
+            ), _construct_tool(plugin.info.ai_plugin)
 
         commands: CommandToolDict = {
-            plugin.info.ai_plugin.name_for_model: create_command_tool(plugin)
-            for plugin in plugins
+            plugin.info.ai_plugin.name_for_model: create_command_tool(
+                plugin, _get_plugin_auth(plugin, token_source)
+            )
+            for plugin in request_data.plugins
         }
         chain = ToolsChain(model, commands)
 
         choice = response.create_single_choice()
         choice.open()
 
-        callback = AssistantChainCallback(choice, addon_name_mapping)
+        callback = AssistantChainCallback(
+            choice, request_data.addon_name_mapping
+        )
         finish_reason = FinishReason.STOP
-        messages = convert_commands_to_tools(parse_history(request.messages))
+        messages = convert_commands_to_tools(request_data.messages)
         try:
             model_request_limiter = AddonsDialogueLimiter(
-                max_addons_dialogue_tokens, model
+                request_data.max_addons_dialogue_tokens, model
             )
             await chain.run_chat(messages, callback, model_request_limiter)
         except ReasonLengthException:
@@ -294,3 +300,73 @@ class AssistantApplication(ChatCompletion):
         response.set_usage(
             model.total_prompt_tokens, model.total_completion_tokens
         )
+
+    @override
+    async def tokenize(self, request: TokenizeRequest) -> TokenizeResponse:
+        inputs: list[ModelClientRequest | str] = []
+
+        for tokenizer_input in request.inputs:
+            if tokenizer_input.type == "string":
+                inputs.append(tokenizer_input.value)
+                continue
+
+            request_data = await RequestData.from_dial_request(
+                tokenizer_input.value
+            )
+            if self._supports_native_tools(tokenizer_input.value.model):
+                inputs.append(_native_tools_request(request_data))
+            else:
+                inputs.append(_emulated_tools_request(request_data))
+
+        client = TokenizeClient(self.args.openai_conf.api_base)
+        outputs = await client.tokenize(TokenizeClientRequest(inputs=inputs))
+
+        return TokenizeResponse(
+            outputs=[
+                TokenizeSuccess(token_count=output)
+                if isinstance(output, int)
+                else TokenizeError(error=output)
+                for index, output in enumerate(outputs)
+            ]
+        )
+
+    @override
+    async def truncate_prompt(
+        self, request: TruncatePromptRequest
+    ) -> TruncatePromptResponse:
+        inputs: list[ModelClientRequest] = []
+        indices_converters: list[Callable[[list[int]], list[int]]] = []
+
+        for completion_request in request.inputs:
+            request_data = await RequestData.from_dial_request(
+                completion_request
+            )
+            if self._supports_native_tools(completion_request.model):
+                inputs.append(_native_tools_request(request_data))
+                indices_converters.append(lambda indices: indices)
+            else:
+                inputs.append(_emulated_tools_request(request_data))
+                indices_converters.append(
+                    lambda indices: get_discarded_user_messages(
+                        request_data.messages, indices
+                    )
+                )
+
+        client = TruncatePromptClient(self.args.openai_conf.api_base)
+        outputs = await client.truncate_prompt(
+            TruncatePromptClientRequest(inputs=inputs)
+        )
+
+        return TruncatePromptResponse(
+            outputs=[
+                TruncatePromptSuccess(
+                    discarded_messages=indices_converters[index](output)
+                )
+                if isinstance(output, list)
+                else TruncatePromptError(error=output)
+                for index, output in enumerate(outputs)
+            ]
+        )
+
+    def _supports_native_tools(self, model: str) -> bool:
+        return model in self.tools_supporting_deployments

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from aidial_assistant.model.model_client import (
     ExtraResultsCallback,
     ModelClient,
+    ModelClientRequest,
     ReasonLengthException,
 )
 from aidial_assistant.utils.open_ai import (
@@ -53,7 +54,11 @@ async def test_discarded_messages():
     model_client = ModelClient(openai_client, MODEL_ARGS)
     extra_results_callback = Mock(spec=ExtraResultsCallback)
 
-    await join_string(model_client.agenerate([], extra_results_callback))
+    await join_string(
+        model_client.agenerate(
+            ModelClientRequest(messages=[]), extra_results_callback
+        )
+    )
 
     assert extra_results_callback.on_discarded_messages.call_args_list == [
         call(2)
@@ -73,7 +78,12 @@ async def test_content():
     )
     model_client = ModelClient(openai_client, MODEL_ARGS)
 
-    assert await join_string(model_client.agenerate([])) == "one, two, three"
+    assert (
+        await join_string(
+            model_client.agenerate(ModelClientRequest(messages=[]))
+        )
+        == "one, two, three"
+    )
 
 
 @pytest.mark.asyncio
@@ -97,7 +107,9 @@ async def test_reason_length_with_usage():
     model_client = ModelClient(openai_client, MODEL_ARGS)
 
     with pytest.raises(ReasonLengthException):
-        async for chunk in model_client.agenerate([]):
+        async for chunk in model_client.agenerate(
+            ModelClientRequest(messages=[])
+        ):
             assert chunk == "text"
 
     assert model_client.total_prompt_tokens == 1
@@ -118,17 +130,17 @@ async def test_api_args():
         assistant_message("c"),
     ]
 
-    await join_string(model_client.agenerate(messages, extra="args"))
+    await join_string(
+        model_client.agenerate(ModelClientRequest(messages=messages))
+    )
 
     assert openai_client.chat.completions.create.call_args_list == [
         call(
-            messages=[
-                {"role": "system", "content": "a"},
-                {"role": "user", "content": "b"},
-                {"role": "assistant", "content": "c"},
-            ],
+            messages=messages,
             **MODEL_ARGS,
             stream=True,
-            extra_body={"extra": "args"},
+            tools=None,
+            max_tokens=None,
+            extra_body={},
         )
     ]

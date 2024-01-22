@@ -7,6 +7,7 @@ from openai.types.chat import (
 )
 from openai.types.chat.chat_completion_message_tool_call_param import Function
 
+from aidial_assistant.model.model_client import ModelClientRequest
 from aidial_assistant.tools_chain.tools_chain import ToolsChain
 from aidial_assistant.utils.open_ai import (
     construct_tool,
@@ -44,9 +45,15 @@ async def test_model_request_limit_exceeded():
     tool = construct_tool(TEST_COMMAND_NAME, "", {}, [])
     model = TestModelClient(
         tool_calls={
-            TestModelClient.agenerate_key(messages, tools=[tool]): tool_calls
+            TestModelClient.agenerate_key(
+                ModelClientRequest(messages=messages, tools=[tool])
+            ): tool_calls
         },
-        results={TestModelClient.agenerate_key(messages): BEST_EFFORT_RESPONSE},
+        results={
+            TestModelClient.agenerate_key(
+                ModelClientRequest(messages=messages)
+            ): BEST_EFFORT_RESPONSE
+        },
     )
 
     messages_with_dialogue = messages + [
