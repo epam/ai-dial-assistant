@@ -15,7 +15,7 @@ from aidial_assistant.chain.command_chain import (
 )
 from aidial_assistant.chain.history import History, ScopedMessage
 from aidial_assistant.commands.base import Command, TextResult
-from aidial_assistant.model.model_client import ModelClient
+from aidial_assistant.model.model_client import ModelClient, ModelClientRequest
 from aidial_assistant.utils.open_ai import (
     assistant_message,
     system_message,
@@ -82,16 +82,20 @@ async def test_model_doesnt_support_protocol():
     ]
     assert model_client.agenerate.call_args_list == [
         call(
-            [
-                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
-                user_message(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
-            ]
+            ModelClientRequest(
+                messages=[
+                    system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                    user_message(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
+                ]
+            )
         ),
         call(
-            [
-                system_message(SYSTEM_MESSAGE),
-                user_message(USER_MESSAGE),
-            ]
+            ModelClientRequest(
+                messages=[
+                    system_message(SYSTEM_MESSAGE),
+                    user_message(USER_MESSAGE),
+                ]
+            )
         ),
     ]
 
@@ -132,26 +136,34 @@ async def test_model_partially_supports_protocol():
     ]
     assert model_client.agenerate.call_args_list == [
         call(
-            [
-                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
-                user_message(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
-            ]
+            ModelClientRequest(
+                messages=[
+                    system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                    user_message(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
+                ]
+            )
         ),
         call(
-            [
-                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
-                user_message(USER_MESSAGE),
-                assistant_message(TEST_COMMAND_REQUEST),
-                user_message(f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"),
-            ]
+            ModelClientRequest(
+                messages=[
+                    system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                    user_message(USER_MESSAGE),
+                    assistant_message(TEST_COMMAND_REQUEST),
+                    user_message(
+                        f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"
+                    ),
+                ]
+            )
         ),
         call(
-            [
-                system_message(SYSTEM_MESSAGE),
-                user_message(
-                    f"user_message={USER_MESSAGE}, error={FAILED_PROTOCOL_ERROR}, dialogue={succeeded_dialogue}"
-                ),
-            ]
+            ModelClientRequest(
+                messages=[
+                    system_message(SYSTEM_MESSAGE),
+                    user_message(
+                        f"user_message={USER_MESSAGE}, error={FAILED_PROTOCOL_ERROR}, dialogue={succeeded_dialogue}"
+                    ),
+                ]
+            )
         ),
     ]
 
@@ -197,26 +209,34 @@ async def test_no_tokens_for_tools():
     ]
     assert model_client.agenerate.call_args_list == [
         call(
-            [
-                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
-                user_message(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
-            ]
+            ModelClientRequest(
+                messages=[
+                    system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                    user_message(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
+                ]
+            )
         ),
         call(
-            [
-                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
-                user_message(USER_MESSAGE),
-                assistant_message(TEST_COMMAND_REQUEST),
-                user_message(f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"),
-            ]
+            ModelClientRequest(
+                messages=[
+                    system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                    user_message(USER_MESSAGE),
+                    assistant_message(TEST_COMMAND_REQUEST),
+                    user_message(
+                        f"{TEST_COMMAND_RESPONSE}{ENFORCE_JSON_FORMAT}"
+                    ),
+                ]
+            )
         ),
         call(
-            [
-                system_message(SYSTEM_MESSAGE),
-                user_message(
-                    f"user_message={USER_MESSAGE}, error={NO_TOKENS_ERROR}, dialogue=[]"
-                ),
-            ]
+            ModelClientRequest(
+                messages=[
+                    system_message(SYSTEM_MESSAGE),
+                    user_message(
+                        f"user_message={USER_MESSAGE}, error={NO_TOKENS_ERROR}, dialogue=[]"
+                    ),
+                ]
+            )
         ),
     ]
 
@@ -255,18 +275,22 @@ async def test_model_request_limit_exceeded():
     ]
     assert model_client.agenerate.call_args_list == [
         call(
-            [
-                system_message(f"system_prefix={SYSTEM_MESSAGE}"),
-                user_message(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
-            ]
+            ModelClientRequest(
+                messages=[
+                    system_message(f"system_prefix={SYSTEM_MESSAGE}"),
+                    user_message(f"{USER_MESSAGE}{ENFORCE_JSON_FORMAT}"),
+                ]
+            )
         ),
         call(
-            [
-                system_message(SYSTEM_MESSAGE),
-                user_message(
-                    f"user_message={USER_MESSAGE}, error={LIMIT_EXCEEDED_ERROR}, dialogue=[]"
-                ),
-            ]
+            ModelClientRequest(
+                messages=[
+                    system_message(SYSTEM_MESSAGE),
+                    user_message(
+                        f"user_message={USER_MESSAGE}, error={LIMIT_EXCEEDED_ERROR}, dialogue=[]"
+                    ),
+                ]
+            )
         ),
     ]
     assert model_request_limiter.verify_limit.call_args_list == [

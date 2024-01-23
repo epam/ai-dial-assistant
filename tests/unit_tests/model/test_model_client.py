@@ -1,7 +1,9 @@
+from typing import Any
 from unittest.mock import Mock, call
 
 import pytest
 from openai import AsyncOpenAI
+from openai._types import NOT_GIVEN
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 from pydantic import BaseModel
 
@@ -35,7 +37,7 @@ class Choice(BaseModel):
 
 class Chunk(BaseModel):
     choices: list[Choice]
-    statistics: dict[str, int] | None = None
+    statistics: dict[str, Any] | None = None
     usage: Usage | None = None
 
 
@@ -47,7 +49,7 @@ async def test_discarded_messages():
         [
             Chunk(
                 choices=[Choice(delta=Delta(content=""))],
-                statistics={"discarded_messages": 2},
+                statistics={"discarded_messages": [0, 1]},
             )
         ]
     )
@@ -61,7 +63,7 @@ async def test_discarded_messages():
     )
 
     assert extra_results_callback.on_discarded_messages.call_args_list == [
-        call(2)
+        call([0, 1])
     ]
 
 
@@ -139,8 +141,8 @@ async def test_api_args():
             messages=messages,
             **MODEL_ARGS,
             stream=True,
-            tools=None,
-            max_tokens=None,
-            extra_body={},
+            tools=NOT_GIVEN,
+            max_tokens=NOT_GIVEN,
+            extra_body=None,
         )
     ]

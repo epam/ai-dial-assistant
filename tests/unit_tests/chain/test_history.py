@@ -71,55 +71,6 @@ async def test_history_truncation(
     ]
 
 
-@pytest.mark.asyncio
-async def test_truncation_overflow():
-    history = History(
-        assistant_system_message_template=Template(""),
-        best_effort_template=Template(""),
-        scoped_messages=[
-            ScopedMessage(message=system_message("a"), user_index=0),
-            ScopedMessage(message=user_message("b"), user_index=1),
-        ],
-    )
-
-    model_client = Mock(spec=ModelClient)
-    model_client.get_discarded_messages.return_value = 1
-
-    with pytest.raises(Exception) as exc_info:
-        await history.truncate(model_client, MAX_PROMPT_TOKENS)
-
-    assert (
-        str(exc_info.value) == "No user messages left after history truncation."
-    )
-
-
-@pytest.mark.asyncio
-async def test_truncation_with_incorrect_message_sequence():
-    history = History(
-        assistant_system_message_template=Template(""),
-        best_effort_template=Template(""),
-        scoped_messages=[
-            ScopedMessage(
-                message=user_message("a"),
-                scope=MessageScope.INTERNAL,
-                user_index=0,
-            ),
-            ScopedMessage(message=user_message("b"), user_index=0),
-        ],
-    )
-
-    model_client = Mock(spec=ModelClient)
-    model_client.get_discarded_messages.return_value = 1
-
-    with pytest.raises(Exception) as exc_info:
-        await history.truncate(model_client, MAX_PROMPT_TOKENS)
-
-    assert (
-        str(exc_info.value)
-        == "Internal messages must be followed by an assistant reply."
-    )
-
-
 def test_protocol_messages_with_system_message():
     system_content = "<system message>"
     user_content = "<user message>"

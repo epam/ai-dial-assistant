@@ -66,7 +66,7 @@ class TestModelClient(ModelClient):
 
     @staticmethod
     def agenerate_key(request: ModelClientRequest) -> str:
-        return json.dumps(request)
+        return json.dumps(request.json())
 
 
 class TestCommand(Command):

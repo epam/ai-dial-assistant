@@ -51,22 +51,22 @@ def test_parse_history():
         ScopedMessage(
             scope=MessageScope.INTERNAL,
             message=assistant_message(FIRST_REQUEST_FIXED),
-            user_index=0,
+            user_index=1,
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
             message=user_message(FIRST_RESPONSE),
-            user_index=0,
+            user_index=1,
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
             message=assistant_message(SECOND_REQUEST),
-            user_index=0,
+            user_index=1,
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
             message=user_message(content=SECOND_RESPONSE),
-            user_index=0,
+            user_index=1,
         ),
         ScopedMessage(
             scope=MessageScope.USER,
