@@ -179,7 +179,7 @@ class AssistantApplication(ChatCompletion):
             (plugin.url for plugin in request_data.plugins),
         )
 
-        if self._supports_native_tools(request.model):
+        if self._supports_native_tools(request_data.model):
             await AssistantApplication._run_native_tools_chat(
                 model, token_source, request_data, response
             )
@@ -313,7 +313,7 @@ class AssistantApplication(ChatCompletion):
             request_data = await RequestData.from_dial_request(
                 tokenizer_input.value
             )
-            if self._supports_native_tools(tokenizer_input.value.model):
+            if self._supports_native_tools(request_data.model):
                 inputs.append(_native_tools_request(request_data))
             else:
                 inputs.append(_emulated_tools_request(request_data))
@@ -326,7 +326,7 @@ class AssistantApplication(ChatCompletion):
                 TokenizeSuccess(token_count=output)
                 if isinstance(output, int)
                 else TokenizeError(error=output)
-                for index, output in enumerate(outputs)
+                for output in outputs
             ]
         )
 
@@ -341,7 +341,7 @@ class AssistantApplication(ChatCompletion):
             request_data = await RequestData.from_dial_request(
                 completion_request
             )
-            if self._supports_native_tools(completion_request.model):
+            if self._supports_native_tools(request_data.model):
                 inputs.append(_native_tools_request(request_data))
                 indices_converters.append(lambda indices: indices)
             else:

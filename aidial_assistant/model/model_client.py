@@ -20,7 +20,7 @@ class ReasonLengthException(Exception):
 
 
 class ExtraResultsCallback:
-    def on_discarded_messages(self, discarded_messages: int):
+    def on_discarded_messages(self, discarded_messages: list[int]):
         pass
 
     def on_prompt_tokens(self, prompt_tokens: int):
@@ -32,6 +32,13 @@ class ExtraResultsCallback:
         pass
 
 
+class ModelClientRequest(BaseModel):
+    messages: list[ChatCompletionMessageParam]
+    max_tokens: int | None = None
+    tools: list[ChatCompletionToolParam] | None = None
+    max_prompt_tokens: int | None = None
+
+
 async def _flush_stream(stream: AsyncIterator[str]):
     try:
         async for _ in stream:
@@ -40,11 +47,23 @@ async def _flush_stream(stream: AsyncIterator[str]):
         pass
 
 
-class ModelClientRequest(BaseModel):
-    messages: list[ChatCompletionMessageParam]
-    max_tokens: int | NotGiven = NOT_GIVEN
-    tools: list[ChatCompletionToolParam] | NotGiven = NOT_GIVEN
-    max_prompt_tokens: int | None = None
+def _get_or_not_given(value: Any) -> Any | NotGiven:
+    return NOT_GIVEN if value is None else value
+
+
+def _discarded_messages_count_to_indices(
+    messages: list[ChatCompletionMessageParam], discarded_messages: int
+) -> list[int]:
+    return list(
+        islice(
+            (
+                i
+                for i, message in enumerate(messages)
+                if message["role"] != "system"
+            ),
+            discarded_messages,
+        )
+    )
 
 
 class ModelClient(ABC):
@@ -63,12 +82,12 @@ class ModelClient(ABC):
         model_result = await self.client.chat.completions.create(
             **self.model_args,
             extra_body={"max_prompt_tokens": request.max_prompt_tokens}
-            if isinstance(request.max_prompt_tokens, int)
-            else {},
+            if request.max_prompt_tokens is not None
+            else None,
             stream=True,
             messages=request.messages,
-            tools=request.tools,
-            max_tokens=request.max_tokens,
+            tools=_get_or_not_given(request.tools),
+            max_tokens=_get_or_not_given(request.max_tokens),
         )
 
         finish_reason_length = False
@@ -89,7 +108,11 @@ class ModelClient(ABC):
                 ).get("discarded_messages")
                 if discarded_messages is not None:
                     extra_results_callback.on_discarded_messages(
-                        discarded_messages
+                        _discarded_messages_count_to_indices(
+                            request.messages, discarded_messages
+                        )
+                        if isinstance(discarded_messages, int)
+                        else discarded_messages
                     )
 
             choice = chunk.choices[0]
@@ -150,11 +173,9 @@ class ModelClient(ABC):
     ) -> list[int]:
         class DiscardedMessagesCallback(ExtraResultsCallback):
             def __init__(self):
-                self.discarded_messages: int | list[int] | None = None
+                self.discarded_messages: list[int] | None = None
 
-            def on_discarded_messages(
-                self, discarded_messages: int | list[int]
-            ):
+            def on_discarded_messages(self, discarded_messages: list[int]):
                 self.discarded_messages = discarded_messages
 
         callback = DiscardedMessagesCallback()
@@ -170,18 +191,6 @@ class ModelClient(ABC):
         )
         if callback.discarded_messages is None:
             raise Exception("Discarded messages were not provided.")
-
-        if isinstance(callback.discarded_messages, int):
-            return list(
-                islice(
-                    (
-                        i
-                        for i, message in enumerate(messages)
-                        if message["role"] != "system"
-                    ),
-                    callback.discarded_messages,
-                )
-            )
 
         return callback.discarded_messages
 

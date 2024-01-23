@@ -44,6 +44,15 @@ class ScopedMessage(BaseModel):
     user_index: int
 
 
+def _validate_required(value: str | None, name: str) -> str:
+    if value is None:
+        raise RequestParameterValidationError(
+            f"Missing required parameter {name}.", param=name
+        )
+
+    return value
+
+
 def _validate_messages(messages: list[Message]) -> None:
     if not messages:
         raise RequestParameterValidationError(
@@ -180,6 +189,7 @@ def get_discarded_user_messages(
 
 
 class RequestData(BaseModel):
+    model: str
     model_args: dict[str, str]
     messages: list[ScopedMessage]
     plugins: list[PluginInfo]
@@ -194,6 +204,7 @@ class RequestData(BaseModel):
     ) -> "RequestData":
         _validate_messages(request.messages)
         addon_references = _validate_addons(request.addons)
+        model = _validate_required(request.model, "model")
 
         plugins: list[PluginInfo] = []
         # DIAL Core has own names for addons, so in stages we need to map them to the names used by the user
@@ -208,6 +219,7 @@ class RequestData(BaseModel):
                 ] = addon_reference.name
 
         return cls(
+            model=model,
             model_args=_get_model_args(request),
             messages=_parse_history(request.messages),
             plugins=plugins,
