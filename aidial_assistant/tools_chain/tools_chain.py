@@ -33,6 +33,7 @@ from aidial_assistant.commands.base import Command
 from aidial_assistant.model.model_client import (
     ExtraResultsCallback,
     ModelClient,
+    ModelClientRequest,
 )
 from aidial_assistant.utils.exceptions import RequestParameterValidationError
 from aidial_assistant.utils.open_ai import tool_calls_message, tool_message
@@ -131,11 +132,7 @@ class ToolsChain:
     ):
         self.model = model
         self.commands = commands
-        self.model_extra_args = (
-            {}
-            if max_completion_tokens is None
-            else {"max_tokens": max_completion_tokens}
-        )
+        self.max_completion_tokens = max_completion_tokens
 
     async def run_chat(
         self,
@@ -154,10 +151,12 @@ class ToolsChain:
                     await model_request_limiter.verify_limit(all_messages)
 
                 async for chunk in self.model.agenerate(
-                    all_messages,
+                    ModelClientRequest(
+                        messages=all_messages,
+                        tools=tools,
+                        max_tokens=self.max_completion_tokens,
+                    ),
                     tool_calls_callback,
-                    tools=tools,
-                    **self.model_extra_args,
                 ):
                     result_callback.on_result(chunk)
             except (BadRequestError, LimitExceededException) as e:
@@ -172,7 +171,8 @@ class ToolsChain:
                 # and try again without tools.
                 all_messages = all_messages[:-last_message_block_length]
                 async for chunk in self.model.agenerate(
-                    all_messages, tool_calls_callback
+                    ModelClientRequest(messages=all_messages),
+                    tool_calls_callback,
                 ):
                     result_callback.on_result(chunk)
                 break

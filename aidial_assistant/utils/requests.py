@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from aiohttp import ClientResponse, ClientSession
 
@@ -17,4 +17,12 @@ async def arequest(
 @asynccontextmanager
 async def aget(url: str, headers=None) -> AsyncIterator[ClientResponse]:
     async with arequest("GET", url, headers) as response:
+        yield response
+
+
+@asynccontextmanager
+async def apost(
+    url: str, data: Any, headers=None
+) -> AsyncIterator[ClientResponse]:
+    async with arequest("POST", url, headers, data=data) as response:
         yield response

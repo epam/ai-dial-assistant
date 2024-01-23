@@ -1,12 +1,16 @@
 from abc import ABC
-from typing import Any, AsyncIterator, List
+from itertools import islice
+from typing import Any, AsyncIterator
 
 from aidial_sdk.utils.merge_chunks import merge
 from openai import AsyncOpenAI
+from openai._types import NOT_GIVEN, NotGiven
 from openai.types.chat import (
     ChatCompletionMessageParam,
     ChatCompletionMessageToolCallParam,
+    ChatCompletionToolParam,
 )
+from pydantic import BaseModel
 
 from aidial_assistant.utils.open_ai import Usage
 
@@ -16,7 +20,7 @@ class ReasonLengthException(Exception):
 
 
 class ExtraResultsCallback:
-    def on_discarded_messages(self, discarded_messages: int):
+    def on_discarded_messages(self, discarded_messages: list[int]):
         pass
 
     def on_prompt_tokens(self, prompt_tokens: int):
@@ -28,12 +32,38 @@ class ExtraResultsCallback:
         pass
 
 
+class ModelClientRequest(BaseModel):
+    messages: list[ChatCompletionMessageParam]
+    max_tokens: int | None = None
+    tools: list[ChatCompletionToolParam] | None = None
+    max_prompt_tokens: int | None = None
+
+
 async def _flush_stream(stream: AsyncIterator[str]):
     try:
         async for _ in stream:
             pass
     except ReasonLengthException:
         pass
+
+
+def _get_or_not_given(value: Any) -> Any | NotGiven:
+    return NOT_GIVEN if value is None else value
+
+
+def _discarded_messages_count_to_indices(
+    messages: list[ChatCompletionMessageParam], discarded_messages: int
+) -> list[int]:
+    return list(
+        islice(
+            (
+                i
+                for i, message in enumerate(messages)
+                if message["role"] != "system"
+            ),
+            discarded_messages,
+        )
+    )
 
 
 class ModelClient(ABC):
@@ -46,15 +76,18 @@ class ModelClient(ABC):
 
     async def agenerate(
         self,
-        messages: List[ChatCompletionMessageParam],
+        request: ModelClientRequest,
         extra_results_callback: ExtraResultsCallback | None = None,
-        **kwargs,
     ) -> AsyncIterator[str]:
         model_result = await self.client.chat.completions.create(
             **self.model_args,
-            extra_body=kwargs,
+            extra_body={"max_prompt_tokens": request.max_prompt_tokens}
+            if request.max_prompt_tokens is not None
+            else None,
             stream=True,
-            messages=messages,
+            messages=request.messages,
+            tools=_get_or_not_given(request.tools),
+            max_tokens=_get_or_not_given(request.max_tokens),
         )
 
         finish_reason_length = False
@@ -70,12 +103,16 @@ class ModelClient(ABC):
                     extra_results_callback.on_prompt_tokens(prompt_tokens)
 
             if extra_results_callback:
-                discarded_messages: int | None = chunk_dict.get(
+                discarded_messages: int | list[int] | None = chunk_dict.get(
                     "statistics", {}
                 ).get("discarded_messages")
                 if discarded_messages is not None:
                     extra_results_callback.on_discarded_messages(
-                        discarded_messages
+                        _discarded_messages_count_to_indices(
+                            request.messages, discarded_messages
+                        )
+                        if isinstance(discarded_messages, int)
+                        else discarded_messages
                     )
 
             choice = chunk.choices[0]
@@ -106,6 +143,7 @@ class ModelClient(ABC):
 
     # TODO: Use a dedicated endpoint for counting tokens.
     #  This request may throw an error if the number of tokens is too large.
+    # https://github.com/epam/ai-dial-assistant/issues/39
     async def count_tokens(
         self, messages: list[ChatCompletionMessageParam]
     ) -> int:
@@ -119,7 +157,8 @@ class ModelClient(ABC):
         callback = PromptTokensCallback()
         await _flush_stream(
             self.agenerate(
-                messages, extra_results_callback=callback, max_tokens=1
+                ModelClientRequest(messages=messages, max_tokens=1),
+                extra_results_callback=callback,
             )
         )
         if callback.token_count is None:
@@ -128,29 +167,32 @@ class ModelClient(ABC):
         return callback.token_count
 
     # TODO: Use a dedicated endpoint for discarded_messages.
+    # https://github.com/epam/ai-dial-assistant/issues/39
     async def get_discarded_messages(
         self, messages: list[ChatCompletionMessageParam], max_prompt_tokens: int
-    ) -> int:
+    ) -> list[int]:
         class DiscardedMessagesCallback(ExtraResultsCallback):
             def __init__(self):
-                self.message_count: int | None = None
+                self.discarded_messages: list[int] | None = None
 
-            def on_discarded_messages(self, discarded_messages: int):
-                self.message_count = discarded_messages
+            def on_discarded_messages(self, discarded_messages: list[int]):
+                self.discarded_messages = discarded_messages
 
         callback = DiscardedMessagesCallback()
         await _flush_stream(
             self.agenerate(
-                messages,
+                ModelClientRequest(
+                    messages=messages,
+                    max_prompt_tokens=max_prompt_tokens,
+                    max_tokens=1,
+                ),
                 extra_results_callback=callback,
-                max_prompt_tokens=max_prompt_tokens,
-                max_tokens=1,
             )
         )
-        if callback.message_count is None:
-            raise Exception("No message count received.")
+        if callback.discarded_messages is None:
+            raise Exception("Discarded messages were not provided.")
 
-        return callback.message_count
+        return callback.discarded_messages
 
     @property
     def total_prompt_tokens(self) -> int:

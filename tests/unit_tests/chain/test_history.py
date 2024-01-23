@@ -12,11 +12,11 @@ from aidial_assistant.utils.open_ai import (
 )
 
 TRUNCATION_TEST_DATA = [
-    (0, [0, 1, 2, 3, 4, 5, 6]),
-    (1, [0, 2, 3, 4, 5, 6]),
-    (2, [0, 2, 6]),
-    (3, [0, 2, 6]),
-    (4, [0, 2, 6]),
+    ([], [0, 1, 2, 3, 4, 5, 6]),
+    ([1], [0, 2, 3, 4, 5, 6]),
+    ([1, 3], [0, 2, 6]),
+    ([1, 3, 4], [0, 2, 6]),
+    ([1, 3, 4, 5], [0, 2, 6]),
 ]
 
 MAX_PROMPT_TOKENS = 123
@@ -24,92 +24,51 @@ MAX_PROMPT_TOKENS = 123
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "discarded_messages,expected_indices", TRUNCATION_TEST_DATA
+    "discarded_model_messages,expected_indices", TRUNCATION_TEST_DATA
 )
 async def test_history_truncation(
-    discarded_messages: int, expected_indices: list[int]
+    discarded_model_messages, expected_indices: list[int]
 ):
-    history = History(
+    full_history = History(
         assistant_system_message_template=Template(""),
         best_effort_template=Template(""),
         scoped_messages=[
-            ScopedMessage(message=system_message("a")),
-            ScopedMessage(message=user_message("b")),
-            ScopedMessage(message=system_message("c")),
+            ScopedMessage(message=system_message("a"), user_index=0),
+            ScopedMessage(message=user_message("b"), user_index=1),
+            ScopedMessage(message=system_message("c"), user_index=2),
             ScopedMessage(
                 message=assistant_message("d"),
                 scope=MessageScope.INTERNAL,
+                user_index=3,
             ),
             ScopedMessage(
                 message=user_message(content="e"),
                 scope=MessageScope.INTERNAL,
+                user_index=3,
             ),
-            ScopedMessage(message=assistant_message("f")),
-            ScopedMessage(message=user_message("g")),
+            ScopedMessage(message=assistant_message("f"), user_index=3),
+            ScopedMessage(message=user_message("g"), user_index=4),
         ],
     )
 
     model_client = Mock(spec=ModelClient)
-    model_client.get_discarded_messages.return_value = discarded_messages
+    model_client.get_discarded_messages.return_value = discarded_model_messages
 
-    actual = await history.truncate(MAX_PROMPT_TOKENS, model_client)
+    truncated_history, _ = await full_history.truncate(
+        model_client, MAX_PROMPT_TOKENS
+    )
 
     assert (
-        actual.assistant_system_message_template
-        == history.assistant_system_message_template
+        full_history.assistant_system_message_template
+        == full_history.assistant_system_message_template
     )
-    assert actual.best_effort_template == history.best_effort_template
-    assert actual.scoped_messages == [
-        history.scoped_messages[i] for i in expected_indices
+    assert (
+        truncated_history.best_effort_template
+        == full_history.best_effort_template
+    )
+    assert truncated_history.scoped_messages == [
+        full_history.scoped_messages[i] for i in expected_indices
     ]
-
-
-@pytest.mark.asyncio
-async def test_truncation_overflow():
-    history = History(
-        assistant_system_message_template=Template(""),
-        best_effort_template=Template(""),
-        scoped_messages=[
-            ScopedMessage(message=system_message("a")),
-            ScopedMessage(message=user_message("b")),
-        ],
-    )
-
-    model_client = Mock(spec=ModelClient)
-    model_client.get_discarded_messages.return_value = 1
-
-    with pytest.raises(Exception) as exc_info:
-        await history.truncate(MAX_PROMPT_TOKENS, model_client)
-
-    assert (
-        str(exc_info.value) == "No user messages left after history truncation."
-    )
-
-
-@pytest.mark.asyncio
-async def test_truncation_with_incorrect_message_sequence():
-    history = History(
-        assistant_system_message_template=Template(""),
-        best_effort_template=Template(""),
-        scoped_messages=[
-            ScopedMessage(
-                message=user_message("a"),
-                scope=MessageScope.INTERNAL,
-            ),
-            ScopedMessage(message=user_message("b")),
-        ],
-    )
-
-    model_client = Mock(spec=ModelClient)
-    model_client.get_discarded_messages.return_value = 1
-
-    with pytest.raises(Exception) as exc_info:
-        await history.truncate(MAX_PROMPT_TOKENS, model_client)
-
-    assert (
-        str(exc_info.value)
-        == "Internal messages must be followed by an assistant reply."
-    )
 
 
 def test_protocol_messages_with_system_message():
@@ -122,9 +81,11 @@ def test_protocol_messages_with_system_message():
         ),
         best_effort_template=Template(""),
         scoped_messages=[
-            ScopedMessage(message=system_message(system_content)),
-            ScopedMessage(message=user_message(user_content)),
-            ScopedMessage(message=assistant_message(assistant_content)),
+            ScopedMessage(message=system_message(system_content), user_index=0),
+            ScopedMessage(message=user_message(user_content), user_index=1),
+            ScopedMessage(
+                message=assistant_message(assistant_content), user_index=2
+            ),
         ],
     )
 

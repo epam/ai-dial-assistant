@@ -1,13 +1,16 @@
+from typing import Any
 from unittest.mock import Mock, call
 
 import pytest
 from openai import AsyncOpenAI
+from openai._types import NOT_GIVEN
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 from pydantic import BaseModel
 
 from aidial_assistant.model.model_client import (
     ExtraResultsCallback,
     ModelClient,
+    ModelClientRequest,
     ReasonLengthException,
 )
 from aidial_assistant.utils.open_ai import (
@@ -34,7 +37,7 @@ class Choice(BaseModel):
 
 class Chunk(BaseModel):
     choices: list[Choice]
-    statistics: dict[str, int] | None = None
+    statistics: dict[str, Any] | None = None
     usage: Usage | None = None
 
 
@@ -46,17 +49,21 @@ async def test_discarded_messages():
         [
             Chunk(
                 choices=[Choice(delta=Delta(content=""))],
-                statistics={"discarded_messages": 2},
+                statistics={"discarded_messages": [0, 1]},
             )
         ]
     )
     model_client = ModelClient(openai_client, MODEL_ARGS)
     extra_results_callback = Mock(spec=ExtraResultsCallback)
 
-    await join_string(model_client.agenerate([], extra_results_callback))
+    await join_string(
+        model_client.agenerate(
+            ModelClientRequest(messages=[]), extra_results_callback
+        )
+    )
 
     assert extra_results_callback.on_discarded_messages.call_args_list == [
-        call(2)
+        call([0, 1])
     ]
 
 
@@ -73,7 +80,12 @@ async def test_content():
     )
     model_client = ModelClient(openai_client, MODEL_ARGS)
 
-    assert await join_string(model_client.agenerate([])) == "one, two, three"
+    assert (
+        await join_string(
+            model_client.agenerate(ModelClientRequest(messages=[]))
+        )
+        == "one, two, three"
+    )
 
 
 @pytest.mark.asyncio
@@ -97,7 +109,9 @@ async def test_reason_length_with_usage():
     model_client = ModelClient(openai_client, MODEL_ARGS)
 
     with pytest.raises(ReasonLengthException):
-        async for chunk in model_client.agenerate([]):
+        async for chunk in model_client.agenerate(
+            ModelClientRequest(messages=[])
+        ):
             assert chunk == "text"
 
     assert model_client.total_prompt_tokens == 1
@@ -118,17 +132,17 @@ async def test_api_args():
         assistant_message("c"),
     ]
 
-    await join_string(model_client.agenerate(messages, extra="args"))
+    await join_string(
+        model_client.agenerate(ModelClientRequest(messages=messages))
+    )
 
     assert openai_client.chat.completions.create.call_args_list == [
         call(
-            messages=[
-                {"role": "system", "content": "a"},
-                {"role": "user", "content": "b"},
-                {"role": "assistant", "content": "c"},
-            ],
+            messages=messages,
             **MODEL_ARGS,
             stream=True,
-            extra_body={"extra": "args"},
+            tools=NOT_GIVEN,
+            max_tokens=NOT_GIVEN,
+            extra_body=None,
         )
     ]
