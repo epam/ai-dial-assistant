@@ -25,7 +25,6 @@ from aidial_assistant.model.model_client import (
     ModelClient,
     ReasonLengthException,
 )
-from aidial_assistant.open_api.operation_selector import collect_operations
 from aidial_assistant.utils.open_ai import user_message
 from aidial_assistant.utils.open_ai_plugin import OpenAIPluginInfo
 
@@ -62,17 +61,27 @@ class RunPlugin(Command):
         self, query: str, execution_callback: ExecutionCallback
     ) -> ResultObject:
         info = self.plugin.info
-        ops = collect_operations(info.open_api, info.ai_plugin.api.url)
-        api_schema = "\n\n".join([op.to_typescript() for op in ops.values()])  # type: ignore
+        spec = info.open_api
+        spec_url = info.get_full_spec_url()
+        operations = [
+            APIOperation.from_openapi_spec(spec, path, method)
+            for path in spec.paths
+            for method in spec.get_methods_for_path(path)
+        ]
+        api_schema = "\n\n".join([op.to_typescript() for op in operations])  # type: ignore
 
         def create_command(op: APIOperation):
-            return lambda: OpenAPIChatCommand(op, self.plugin.auth)
-
-        command_dict: dict[str, CommandConstructor] = {}
-        for name, op in ops.items():
             # The function is necessary to capture the current value of op.
             # Otherwise, only first op will be used for all commands
-            command_dict[name] = create_command(op)
+            return lambda: OpenAPIChatCommand.create(
+                spec_url, op, self.plugin.auth
+            )
+
+        command_dict: dict[str, CommandConstructor] = {
+            operation.operation_id: create_command(operation)
+            for operation in operations
+        }
+        command_names = command_dict.keys()
         if Reply.token() in command_dict:
             Exception(f"Operation with name '{Reply.token()}' is not allowed.")
 
@@ -80,7 +89,7 @@ class RunPlugin(Command):
 
         history = History(
             assistant_system_message_template=ADDON_SYSTEM_DIALOG_MESSAGE.build(
-                command_names=ops.keys(),
+                command_names=command_names,
                 api_description=info.ai_plugin.description_for_model,
                 api_schema=api_schema,
             ),
