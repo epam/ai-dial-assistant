@@ -1,9 +1,6 @@
 from typing import Any
 
 from langchain_community.tools.openapi.utils.api_models import APIOperation
-from langchain_community.utilities.openapi import OpenAPISpec
-from openai.types.chat import ChatCompletionToolParam
-from openapi_pydantic import Reference, Schema
 from typing_extensions import override
 
 from aidial_assistant.commands.base import (
@@ -22,56 +19,8 @@ from aidial_assistant.model.model_client import (
     ReasonLengthException,
 )
 from aidial_assistant.tools_chain.tools_chain import CommandToolDict, ToolsChain
-from aidial_assistant.utils.open_ai import (
-    construct_tool,
-    system_message,
-    user_message,
-)
-
-
-def _construct_property(
-    spec: OpenAPISpec, schema: Schema | Reference
-) -> dict[str, Any]:
-    return (
-        schema
-        if isinstance(schema, Schema)
-        else spec.get_referenced_schema(schema)
-    ).dict(exclude_none=True)
-
-
-def _construct_tool(
-    spec: OpenAPISpec, path: str, method: str
-) -> ChatCompletionToolParam:
-    operation = spec.get_operation(path, method)
-    properties: dict[str, Any] = {}
-    required = []
-    for p in spec.get_parameters_for_operation(operation):
-        if p.param_schema is None:
-            raise ValueError(f"Parameter {p.name} has no schema")
-
-        properties[p.name] = _construct_property(spec, p.param_schema)
-
-        if p.required:
-            required.append(p.name)
-
-    request_body = spec.get_request_body_for_operation(operation)
-    if request_body is not None:
-        for key, media_type in request_body.content.items():
-            if key == "application/json":
-                if media_type.media_type_schema is None:
-                    raise ValueError("Body has no schema")
-
-                parameter_name = "body"
-                properties[parameter_name] = _construct_property(
-                    spec, media_type.media_type_schema
-                )
-                required.append(parameter_name)
-                break
-
-    operation_id = OpenAPISpec.get_cleaned_operation_id(operation, path, method)
-    return construct_tool(
-        operation_id, operation.description or "", properties, required
-    )
+from aidial_assistant.utils.open_ai import system_message, user_message
+from aidial_assistant.utils.open_api import construct_tool_from_spec
 
 
 class RunTool(Command):
@@ -108,7 +57,7 @@ class RunTool(Command):
             for operation, tool in (
                 (
                     APIOperation.from_openapi_spec(spec, path, method),
-                    _construct_tool(spec, path, method),
+                    construct_tool_from_spec(spec, path, method),
                 )
                 for method in spec.get_methods_for_path(path)
             )
