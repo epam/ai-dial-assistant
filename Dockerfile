@@ -3,9 +3,6 @@ FROM python:3.11-alpine AS builder
 
 ARG POETRY_VERSION=1.6.1
 
-# Vulnerability fix: CVE-2023-5363
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
-
 # Install alpine-sdk to compile some langchain dependencies (numexpr, numpy)
 RUN apk add --no-cache alpine-sdk linux-headers
 
@@ -37,6 +34,8 @@ ENV LOG_LEVEL=INFO
 
 # Vulnerability fix: CVE-2023-5363
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
+# Vulnerability fix: CVE-2023-52425
+RUN apk upgrade --no-cache libexpat
 
 # Install libstdc++ to run the compiled dependencies
 RUN apk add --no-cache libstdc++
