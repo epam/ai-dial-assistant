@@ -4,8 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "wednesday"
-      time: "09:00"
+      day: "tuesday"
+      time: "13:34"
     # Disable version updates, keep security updates only
     open-pull-requests-limit: 0
     commit-message:
