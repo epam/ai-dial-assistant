@@ -5,7 +5,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "tuesday"
-      time: "09:00"
+      time: "13:34"
     # Disable version updates, keep security updates only
     open-pull-requests-limit: 0
     commit-message:
