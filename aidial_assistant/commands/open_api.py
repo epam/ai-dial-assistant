@@ -8,7 +8,10 @@ from aidial_assistant.commands.base import (
     ExecutionCallback,
     ResultObject,
 )
-from aidial_assistant.open_api.requester import OpenAPIEndpointRequester
+from aidial_assistant.open_api.requester import (
+    OpenAPIEndpointRequester,
+    ParamMapping,
+)
 
 
 class OpenAPIChatCommand(Command):
@@ -16,14 +19,24 @@ class OpenAPIChatCommand(Command):
     def token() -> str:
         return "open-api-chat-command"
 
-    def __init__(self, op: APIOperation, plugin_auth: str | None):
-        self.op = op
-        self.plugin_auth = plugin_auth
+    def __init__(self, requester: OpenAPIEndpointRequester):
+        self.requester = requester
 
     @override
     async def execute(
         self, args: dict[str, Any], execution_callback: ExecutionCallback
     ) -> ResultObject:
-        return await OpenAPIEndpointRequester(
-            self.op, self.plugin_auth
-        ).execute(args)
+        return await self.requester.execute(args)
+
+    @classmethod
+    def create(
+        cls, base_url: str, operation: APIOperation, auth: str | None
+    ) -> "OpenAPIChatCommand":
+        path = base_url.rstrip("/") + operation.path
+        method = operation.method
+        param_mapping = ParamMapping(
+            query_params=operation.query_params,
+            body_params=operation.body_params,
+            path_params=operation.path_params,
+        )
+        return cls(OpenAPIEndpointRequester(path, method, param_mapping, auth))

@@ -1,14 +1,11 @@
 from typing import Any
 
-from langchain_community.tools.openapi.utils.api_models import (
-    APIOperation,
-    APIPropertyBase,
-)
-from openai.types.chat import ChatCompletionToolParam
+from langchain_community.tools.openapi.utils.api_models import APIOperation
 from typing_extensions import override
 
 from aidial_assistant.commands.base import (
     Command,
+    CommandConstructor,
     ExecutionCallback,
     ResultObject,
     TextResult,
@@ -21,46 +18,9 @@ from aidial_assistant.model.model_client import (
     ModelClient,
     ReasonLengthException,
 )
-from aidial_assistant.open_api.operation_selector import collect_operations
-from aidial_assistant.tools_chain.tools_chain import (
-    CommandTool,
-    CommandToolDict,
-    ToolsChain,
-)
-from aidial_assistant.utils.open_ai import (
-    construct_tool,
-    system_message,
-    user_message,
-)
-
-
-def _construct_property(p: APIPropertyBase) -> dict[str, Any]:
-    parameter = {
-        "type": p.type,
-        "description": p.description,
-    }
-    return {k: v for k, v in parameter.items() if v is not None}
-
-
-def _construct_tool(op: APIOperation) -> ChatCompletionToolParam:
-    properties = {}
-    required = []
-    for p in op.properties:
-        properties[p.name] = _construct_property(p)
-
-        if p.required:
-            required.append(p.name)
-
-    if op.request_body is not None:
-        for p in op.request_body.properties:
-            properties[p.name] = _construct_property(p)
-
-            if p.required:
-                required.append(p.name)
-
-    return construct_tool(
-        op.operation_id, op.description or "", properties, required
-    )
+from aidial_assistant.tools_chain.tools_chain import CommandToolDict, ToolsChain
+from aidial_assistant.utils.open_ai import system_message, user_message
+from aidial_assistant.utils.open_api import construct_tool_from_spec
 
 
 class RunTool(Command):
@@ -81,17 +41,26 @@ class RunTool(Command):
     ) -> ResultObject:
         query = get_required_field(args, "query")
 
-        ops = collect_operations(
-            self.plugin.info.open_api, self.plugin.info.ai_plugin.api.url
-        )
+        spec = self.plugin.info.open_api
+        spec_url = self.plugin.info.get_full_spec_url()
 
-        def create_command_tool(op: APIOperation) -> CommandTool:
-            return lambda: OpenAPIChatCommand(
-                op, self.plugin.auth
-            ), _construct_tool(op)
+        def create_command(operation: APIOperation) -> CommandConstructor:
+            # The function is necessary to capture the current value of op.
+            # Otherwise, only first op will be used for all commands
+            return lambda: OpenAPIChatCommand.create(
+                spec_url, operation, self.plugin.auth
+            )
 
         commands: CommandToolDict = {
-            name: create_command_tool(op) for name, op in ops.items()
+            operation.operation_id: (create_command(operation), tool)
+            for path in spec.paths
+            for operation, tool in (
+                (
+                    APIOperation.from_openapi_spec(spec, path, method),
+                    construct_tool_from_spec(spec, path, method),
+                )
+                for method in spec.get_methods_for_path(path)
+            )
         }
 
         chain = ToolsChain(self.model, commands, self.max_completion_tokens)

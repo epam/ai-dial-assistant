@@ -43,6 +43,9 @@ class OpenAIPluginInfo(BaseModel):
     ai_plugin: AIPluginConf
     open_api: OpenAPISpec
 
+    def get_full_spec_url(self) -> str:
+        return urljoin(self.ai_plugin.api.url, self.open_api.base_url)
+
 
 class AddonTokenSource:
     def __init__(self, headers: Mapping[str, str], urls: Iterable[str]):

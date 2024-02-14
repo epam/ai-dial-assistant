@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any, Tuple, cast
 
 from openai import BadRequestError
@@ -36,6 +37,8 @@ from aidial_assistant.model.model_client import (
 )
 from aidial_assistant.utils.exceptions import RequestParameterValidationError
 from aidial_assistant.utils.open_ai import tool_calls_message, tool_message
+
+logger = logging.getLogger(__name__)
 
 
 def convert_commands_to_tools(
@@ -99,12 +102,12 @@ def convert_commands_to_tools(
 
 
 def _publish_command(
-    command_callback: CommandCallback, name: str, arguments: str
+    command_callback: CommandCallback, name: str, arguments: dict[str, Any]
 ):
     command_callback.on_command(name)
     args_callback = command_callback.args_callback()
     args_callback.on_args_start()
-    args_callback.on_args_chunk(arguments)
+    args_callback.on_args_chunk(json.dumps(arguments))
     args_callback.on_args_end()
 
 
@@ -209,36 +212,52 @@ class ToolsChain:
         tool_calls: list[ChatCompletionMessageToolCallParam],
         callback: ChainCallback,
     ):
-        commands: list[CommandInvocation] = []
-        command_results: list[CommandResult] = []
+        state: list[Tuple[CommandInvocation, CommandResult]] = []
         result_messages: list[ChatCompletionMessageParam] = []
         for tool_call in tool_calls:
             function = tool_call["function"]
             name = function["name"]
-            arguments: dict[str, Any] = json.loads(function["arguments"])
-            with callback.command_callback() as command_callback:
-                _publish_command(command_callback, name, json.dumps(arguments))
+            try:
                 command = self._create_command(name)
-                result = await self._execute_command(
-                    command,
-                    arguments,
-                    command_callback,
+                arguments: dict[str, Any] = ToolsChain._parse_arguments(
+                    function["arguments"]
+                )
+                with callback.command_callback() as command_callback:
+                    _publish_command(command_callback, name, arguments)
+                    result = await self._execute_command(
+                        command,
+                        arguments,
+                        command_callback,
+                    )
+                    result_messages.append(
+                        tool_message(
+                            content=result["response"],
+                            tool_call_id=tool_call["id"],
+                        )
+                    )
+                    state.append(
+                        (
+                            CommandInvocation(
+                                command=name, arguments=arguments
+                            ),
+                            result,
+                        )
+                    )
+
+            except AssistantProtocolException as e:
+                logger.exception("Failed to process model response")
+                callback.on_error(
+                    "Error", "The model failed to establish the protocol."
                 )
                 result_messages.append(
-                    tool_message(
-                        content=result["response"],
-                        tool_call_id=tool_call["id"],
-                    )
+                    tool_message(content=str(e), tool_call_id=tool_call["id"])
                 )
-                command_results.append(result)
 
-            commands.append(
-                CommandInvocation(command=name, arguments=arguments)
+        if state:
+            commands, results = zip(*state)
+            callback.on_state(
+                commands_to_text(commands), responses_to_text(results)
             )
-
-        callback.on_state(
-            commands_to_text(commands), responses_to_text(command_results)
-        )
 
         return result_messages
 
@@ -257,3 +276,12 @@ class ToolsChain:
         except Exception as e:
             command_callback.on_error(e)
             return CommandResult(status=Status.ERROR, response=str(e))
+
+    @staticmethod
+    def _parse_arguments(arguments: str) -> dict[str, Any]:
+        try:
+            return json.loads(arguments)
+        except json.JSONDecodeError as e:
+            raise AssistantProtocolException(
+                f"Failed to parse arguments: {e}"
+            ) from e

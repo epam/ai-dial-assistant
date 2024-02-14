@@ -79,7 +79,7 @@ class PluginChainCallback(ChainCallback):
 
     @override
     def on_error(self, title: str, error: str):
-        pass
+        self.callback(f"```\n{title}: {error}\n```\n")
 
     @property
     def result(self) -> str:
