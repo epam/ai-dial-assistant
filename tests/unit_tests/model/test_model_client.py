@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import Mock, call
 
 import pytest
@@ -34,7 +35,7 @@ class Choice(BaseModel):
 
 class Chunk(BaseModel):
     choices: list[Choice]
-    statistics: dict[str, int] | None = None
+    statistics: dict[str, Any] | None = None
     usage: Usage | None = None
 
 
@@ -46,7 +47,7 @@ async def test_discarded_messages():
         [
             Chunk(
                 choices=[Choice(delta=Delta(content=""))],
-                statistics={"discarded_messages": 2},
+                statistics={"discarded_messages": [0, 1]},
             )
         ]
     )
@@ -56,7 +57,7 @@ async def test_discarded_messages():
     await join_string(model_client.agenerate([], extra_results_callback))
 
     assert extra_results_callback.on_discarded_messages.call_args_list == [
-        call(2)
+        call([0, 1])
     ]
 
 

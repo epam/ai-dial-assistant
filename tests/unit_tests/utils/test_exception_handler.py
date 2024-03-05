@@ -24,7 +24,7 @@ async def test_request_parameter_validation_error():
     assert (
         repr(exc_info.value)
         == f"HTTPException(message='{ERROR_MESSAGE}', status_code=422,"
-        f" type='invalid_request_error', param='{PARAM}', code=None)"
+        f" type='invalid_request_error', param='{PARAM}', code=None, display_message=None)"
     )
 
 
@@ -40,7 +40,7 @@ async def test_openai_error():
     assert (
         repr(exc_info.value)
         == f"HTTPException(message='{ERROR_MESSAGE}', status_code=500,"
-        f" type='internal_server_error', param=None, code=None)"
+        f" type='internal_server_error', param=None, code=None, display_message=None)"
     )
 
 
@@ -72,7 +72,7 @@ async def test_openai_error_with_json_body():
     assert (
         repr(exc_info.value)
         == f"HTTPException(message='{ERROR_MESSAGE}', status_code={http_status},"
-        f" type='{error_type}', param='{PARAM}', code='{error_code}')"
+        f" type='{error_type}', param='{PARAM}', code='{error_code}', display_message=None)"
     )
 
 
@@ -88,5 +88,5 @@ async def test_generic_exception():
     assert (
         repr(exc_info.value)
         == f"HTTPException(message='{ERROR_MESSAGE}', status_code=500,"
-        f" type='internal_server_error', param=None, code=None)"
+        f" type='internal_server_error', param=None, code=None, display_message=None)"
     )

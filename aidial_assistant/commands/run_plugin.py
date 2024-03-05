@@ -87,7 +87,9 @@ class RunPlugin(Command):
             best_effort_template=ADDON_BEST_EFFORT_TEMPLATE.build(
                 api_schema=api_schema
             ),
-            scoped_messages=[ScopedMessage(message=user_message(query))],
+            scoped_messages=[
+                ScopedMessage(message=user_message(query), user_index=0)
+            ],
         )
 
         chat = CommandChain(

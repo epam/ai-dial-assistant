@@ -1,7 +1,11 @@
 from enum import Enum
+from typing import Tuple, cast
 
 from jinja2 import Template
-from openai.types.chat import ChatCompletionMessageParam
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+)
 from pydantic import BaseModel
 
 from aidial_assistant.chain.command_result import (
@@ -26,6 +30,7 @@ class MessageScope(str, Enum):
 class ScopedMessage(BaseModel):
     scope: MessageScope = MessageScope.USER
     message: ChatCompletionMessageParam
+    user_index: int
 
 
 class History:
@@ -40,35 +45,32 @@ class History:
         )
         self.best_effort_template = best_effort_template
         self.scoped_messages = scoped_messages
-        self._user_message_count = sum(
-            1
-            for message in scoped_messages
-            if message.scope == MessageScope.USER
-        )
 
     def to_protocol_messages(self) -> list[ChatCompletionMessageParam]:
         messages: list[ChatCompletionMessageParam] = []
-        for index, scoped_message in enumerate(self.scoped_messages):
+        scoped_message_iterator = iter(self.scoped_messages)
+        if self._is_first_system_message():
+            message = cast(
+                ChatCompletionSystemMessageParam,
+                next(scoped_message_iterator).message,
+            )
+            messages.append(
+                system_message(
+                    self.assistant_system_message_template.render(
+                        system_prefix=message["content"]
+                    )
+                )
+            )
+        else:
+            messages.append(
+                system_message(self.assistant_system_message_template.render())
+            )
+
+        for scoped_message in scoped_message_iterator:
             message = scoped_message.message
             scope = scoped_message.scope
 
-            if index == 0:
-                if message["role"] == "system":
-                    messages.append(
-                        system_message(
-                            self.assistant_system_message_template.render(
-                                system_prefix=message["content"]
-                            )
-                        )
-                    )
-                else:
-                    messages.append(
-                        system_message(
-                            self.assistant_system_message_template.render()
-                        )
-                    )
-                    messages.append(message)
-            elif scope == MessageScope.USER and message["role"] == "assistant":
+            if scope == MessageScope.USER and message["role"] == "assistant":
                 # Clients see replies in plain text, but the model should understand how to reply appropriately.
                 content = commands_to_text(
                     [
@@ -107,51 +109,59 @@ class History:
         return messages
 
     async def truncate(
-        self, max_prompt_tokens: int, model_client: ModelClient
-    ) -> "History":
-        discarded_messages = await model_client.get_discarded_messages(
+        self, model_client: ModelClient, max_prompt_tokens: int
+    ) -> Tuple["History", list[int]]:
+        discarded_messages = await self._get_discarded_messages(
+            model_client, max_prompt_tokens
+        )
+
+        if not discarded_messages:
+            return self, []
+
+        discarded_messages_set = set(discarded_messages)
+        return (
+            History(
+                assistant_system_message_template=self.assistant_system_message_template,
+                best_effort_template=self.best_effort_template,
+                scoped_messages=[
+                    scoped_message
+                    for index, scoped_message in enumerate(self.scoped_messages)
+                    if index not in discarded_messages_set
+                ],
+            ),
+            discarded_messages,
+        )
+
+    async def _get_discarded_messages(
+        self, model_client: ModelClient, max_prompt_tokens: int
+    ) -> list[int]:
+        discarded_protocol_messages = await model_client.get_discarded_messages(
             self.to_protocol_messages(),
             max_prompt_tokens,
         )
 
-        if discarded_messages > 0:
-            return History(
-                assistant_system_message_template=self.assistant_system_message_template,
-                best_effort_template=self.best_effort_template,
-                scoped_messages=self._skip_messages(discarded_messages),
+        if discarded_protocol_messages:
+            discarded_protocol_messages.sort()
+            discarded_messages = (
+                discarded_protocol_messages
+                if self._is_first_system_message()
+                else [index - 1 for index in discarded_protocol_messages]
+            )
+            user_indices = set(
+                self.scoped_messages[index].user_index
+                for index in discarded_messages
             )
 
-        return self
+            return [
+                index
+                for index, scoped_message in enumerate(self.scoped_messages)
+                if scoped_message.user_index in user_indices
+            ]
 
-    @property
-    def user_message_count(self) -> int:
-        return self._user_message_count
+        return discarded_protocol_messages
 
-    def _skip_messages(self, discarded_messages: int) -> list[ScopedMessage]:
-        messages: list[ScopedMessage] = []
-        current_message = self.scoped_messages[0]
-        message_iterator = iter(self.scoped_messages)
-        for _ in range(discarded_messages):
-            current_message = next(message_iterator)
-            while current_message.message["role"] == "system":
-                # System messages should be kept in the history
-                messages.append(current_message)
-                current_message = next(message_iterator)
-
-        if current_message.scope == MessageScope.INTERNAL:
-            while current_message.scope == MessageScope.INTERNAL:
-                current_message = next(message_iterator)
-
-            # Internal messages (i.e. addon requests/responses) are always followed by an assistant reply
-            assert (
-                current_message.message["role"] == "assistant"
-            ), "Internal messages must be followed by an assistant reply."
-
-        remaining_messages = list(message_iterator)
-        assert (
-            len(remaining_messages) > 0
-        ), "No user messages left after history truncation."
-
-        messages += remaining_messages
-
-        return messages
+    def _is_first_system_message(self) -> bool:
+        return (
+            len(self.scoped_messages) > 0
+            and self.scoped_messages[0].message["role"] == "system"
+        )
