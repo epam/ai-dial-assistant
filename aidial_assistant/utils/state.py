@@ -70,7 +70,7 @@ def _convert_old_commands(string: str) -> str:
 
 def parse_history(history: list[Message]) -> list[ScopedMessage]:
     messages: list[ScopedMessage] = []
-    for message in history:
+    for index, message in enumerate(history):
         if message.role == Role.ASSISTANT:
             invocations = _get_invocations(message.custom_content)
             for invocation in invocations:
@@ -80,25 +80,36 @@ def parse_history(history: list[Message]) -> list[ScopedMessage]:
                         message=assistant_message(
                             _convert_old_commands(invocation["request"])
                         ),
+                        user_index=index,
                     )
                 )
                 messages.append(
                     ScopedMessage(
                         scope=MessageScope.INTERNAL,
                         message=user_message(invocation["response"]),
+                        user_index=index,
                     )
                 )
 
             messages.append(
-                ScopedMessage(message=assistant_message(message.content or ""))
+                ScopedMessage(
+                    message=assistant_message(message.content or ""),
+                    user_index=index,
+                )
             )
         elif message.role == Role.USER:
             messages.append(
-                ScopedMessage(message=user_message(message.content or ""))
+                ScopedMessage(
+                    message=user_message(message.content or ""),
+                    user_index=index,
+                )
             )
         elif message.role == Role.SYSTEM:
             messages.append(
-                ScopedMessage(message=system_message(message.content or ""))
+                ScopedMessage(
+                    message=system_message(message.content or ""),
+                    user_index=index,
+                )
             )
         else:
             raise RequestParameterValidationError(

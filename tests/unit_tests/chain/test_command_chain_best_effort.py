@@ -50,8 +50,8 @@ TEST_HISTORY = History(
         "user_message={{message}}, error={{error}}, dialogue={{dialogue}}"
     ),
     scoped_messages=[
-        ScopedMessage(message=system_message(SYSTEM_MESSAGE)),
-        ScopedMessage(message=user_message(USER_MESSAGE)),
+        ScopedMessage(message=system_message(SYSTEM_MESSAGE), user_index=0),
+        ScopedMessage(message=user_message(USER_MESSAGE), user_index=1),
     ],
 )
 

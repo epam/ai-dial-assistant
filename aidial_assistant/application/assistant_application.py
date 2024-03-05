@@ -26,7 +26,7 @@ from aidial_assistant.chain.command_chain import (
     CommandConstructor,
     CommandDict,
 )
-from aidial_assistant.chain.history import History
+from aidial_assistant.chain.history import History, ScopedMessage
 from aidial_assistant.commands.reply import Reply
 from aidial_assistant.commands.run_plugin import PluginInfo, RunPlugin
 from aidial_assistant.commands.run_tool import RunTool
@@ -106,6 +106,25 @@ def _construct_tool(name: str, description: str) -> ChatCompletionToolParam:
             }
         },
         ["query"],
+    )
+
+
+def _create_history(
+    messages: list[ScopedMessage], plugins: list[PluginInfo]
+) -> History:
+    plugin_descriptions = {
+        plugin.info.ai_plugin.name_for_model: plugin.info.open_api.info.description
+        or plugin.info.ai_plugin.description_for_human
+        for plugin in plugins
+    }
+    return History(
+        assistant_system_message_template=MAIN_SYSTEM_DIALOG_MESSAGE.build(
+            addons=plugin_descriptions
+        ),
+        best_effort_template=MAIN_BEST_EFFORT_TEMPLATE.build(
+            addons=plugin_descriptions
+        ),
+        scoped_messages=messages,
     )
 
 
@@ -204,6 +223,7 @@ class AssistantApplication(ChatCompletion):
             or addon.info.ai_plugin.description_for_human
             for addon in addons
         }
+        scoped_messages = parse_history(request.messages)
         history = History(
             assistant_system_message_template=MAIN_SYSTEM_DIALOG_MESSAGE.build(
                 addons=addon_descriptions
@@ -211,14 +231,17 @@ class AssistantApplication(ChatCompletion):
             best_effort_template=MAIN_BEST_EFFORT_TEMPLATE.build(
                 addons=addon_descriptions
             ),
-            scoped_messages=parse_history(request.messages),
+            scoped_messages=scoped_messages,
         )
-        discarded_messages: int | None = None
+        discarded_user_messages: set[int] | None = None
         if request.max_prompt_tokens is not None:
-            original_size = history.user_message_count
-            history = await history.truncate(request.max_prompt_tokens, model)
-            truncated_size = history.user_message_count
-            discarded_messages = original_size - truncated_size
+            history, discarded_messages = await history.truncate(
+                model, request.max_prompt_tokens
+            )
+            discarded_user_messages = set(
+                scoped_messages[index].user_index
+                for index in discarded_messages
+            )
         # TODO: else compare the history size to the max prompt tokens of the underlying model
 
         choice = response.create_single_choice()
@@ -243,8 +266,8 @@ class AssistantApplication(ChatCompletion):
             model.total_prompt_tokens, model.total_completion_tokens
         )
 
-        if discarded_messages is not None:
-            response.set_discarded_messages(discarded_messages)
+        if discarded_user_messages is not None:
+            response.set_discarded_messages(list(discarded_user_messages))
 
     @staticmethod
     async def _run_native_tools_chat(

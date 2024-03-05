@@ -46,33 +46,41 @@ def test_parse_history():
         ScopedMessage(
             scope=MessageScope.USER,
             message=user_message(FIRST_USER_MESSAGE),
+            user_index=0,
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
             message=assistant_message(FIRST_REQUEST_FIXED),
+            user_index=1,
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
             message=user_message(FIRST_RESPONSE),
+            user_index=1,
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
             message=assistant_message(SECOND_REQUEST),
+            user_index=1,
         ),
         ScopedMessage(
             scope=MessageScope.INTERNAL,
             message=user_message(content=SECOND_RESPONSE),
+            user_index=1,
         ),
         ScopedMessage(
             scope=MessageScope.USER,
             message=assistant_message(FIRST_ASSISTANT_MESSAGE),
+            user_index=1,
         ),
         ScopedMessage(
             scope=MessageScope.USER,
             message=user_message(SECOND_USER_MESSAGE),
+            user_index=2,
         ),
         ScopedMessage(
             scope=MessageScope.USER,
             message=assistant_message(SECOND_ASSISTANT_MESSAGE),
+            user_index=3,
         ),
     ]
