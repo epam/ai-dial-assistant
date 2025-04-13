@@ -98,21 +98,22 @@ class ModelClient(ABC):
                         else discarded_messages
                     )
 
-            choice = chunk.choices[0]
-            delta = choice.delta
-            if delta.content:
-                yield delta.content
+            if len(chunk.choices) > 0:
+                choice = chunk.choices[0]
+                delta = choice.delta
+                if delta.content:
+                    yield delta.content
 
-            if delta.tool_calls:
-                tool_calls_chunks.append(
-                    [
-                        tool_call_chunk.dict()
-                        for tool_call_chunk in delta.tool_calls
-                    ]
-                )
+                if delta.tool_calls:
+                    tool_calls_chunks.append(
+                        [
+                            tool_call_chunk.dict()
+                            for tool_call_chunk in delta.tool_calls
+                        ]
+                    )
 
-            if choice.finish_reason == "length":
-                finish_reason_length = True
+                if choice.finish_reason == "length":
+                    finish_reason_length = True
 
         if finish_reason_length:
             raise ReasonLengthException()
