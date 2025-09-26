@@ -1,3 +1,11 @@
+# This project is archived and no longer developed or maintained. 🧊
+
+This project explored building an AI assistant service compatible with the ChatGPT plugin protocol. The goal was to enable interoperability and reuse of existing ChatGPT plugins within our own assistant framework.
+
+Over time, however, we observed that the ChatGPT plugin ecosystem did not gain significant adoption, and the broader developer and user community shifted toward other integration models (such as APIs, custom tools, or native integrations). As a result, maintaining this project no longer aligns with our priorities.
+
+We are archiving the repository to preserve the work for reference, but we do not plan to continue active development.
+
 ## Overview
 
 The DIAL Assistant Service is designed to respond to user queries, like ChatGPT. It is accessible via [DIAL API](https://epam-rail.com/dial_api).
