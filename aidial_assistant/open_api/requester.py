@@ -4,7 +4,6 @@ from typing import Dict, List, NamedTuple, Optional
 
 import aiohttp.client_exceptions
 from aiohttp import hdrs
-from langchain.tools.openapi.utils.api_models import APIOperation
 
 from aidial_assistant.commands.base import JsonResult, ResultObject, TextResult
 from aidial_assistant.utils.requests import arequest
@@ -12,7 +11,7 @@ from aidial_assistant.utils.requests import arequest
 logger = logging.getLogger(__name__)
 
 
-class _ParamMapping(NamedTuple):
+class ParamMapping(NamedTuple):
     """Mapping from parameter name to parameter value."""
 
     query_params: List[str]
@@ -25,18 +24,21 @@ class OpenAPIEndpointRequester:
     Based on OpenAPIEndpointChain from LangChain.
     """
 
-    def __init__(self, operation: APIOperation, plugin_auth: str | None):
-        self.operation = operation
-        self.param_mapping = _ParamMapping(
-            query_params=operation.query_params,  # type: ignore
-            body_params=operation.body_params,  # type: ignore
-            path_params=operation.path_params,  # type: ignore
-        )
+    def __init__(
+        self,
+        url: str,
+        method: str,
+        param_mapping: ParamMapping,
+        plugin_auth: str | None,
+    ):
+        self.url = url
+        self.method = method
+        self.param_mapping = param_mapping
         self.plugin_auth = plugin_auth
 
     def _construct_path(self, args: Dict[str, str]) -> str:
         """Construct the path from the deserialized input."""
-        path = self.operation.base_url.rstrip("/") + self.operation.path  # type: ignore
+        path = self.url
         for param in self.param_mapping.path_params:
             path = path.replace(f"{{{param}}}", str(args.pop(param, "")))
         return path
@@ -87,17 +89,16 @@ class OpenAPIEndpointRequester:
         )
         logger.debug(f"Request args: {request_args}")
         async with arequest(
-            self.operation.method.value, headers=headers, **request_args  # type: ignore
+            self.method, headers=headers, **request_args  # type: ignore
         ) as response:
             if response.status != 200:
                 try:
                     return JsonResult(json.dumps(await response.json()))
                 except aiohttp.ContentTypeError:
-                    method_str = str(self.operation.method.value)  # type: ignore
                     error_object = {
                         "reason": response.reason,
                         "status_code": response.status,
-                        "method:": method_str.upper(),
+                        "method:": self.method.upper(),
                         "url": request_args["url"],
                         "params": request_args["params"],
                     }
